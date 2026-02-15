@@ -65,6 +65,7 @@
 			);
 			name = EnclaveWallet;
 			packageProductDependencies = (
+				F6B1G1NT0000000000000002 /* BigInt */,
 			);
 			productName = EnclaveWallet;
 			productReference = F62E0BBB2F42278400354D17 /* EnclaveWallet.app */;
@@ -96,6 +97,9 @@
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F62E0BBC2F42278400354D17 /* Products */;
+			packageReferences = (
+				F6B1G1NT0000000000000001 /* XCRemoteSwiftPackageReference "BigInt" */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -329,6 +333,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F6B1G1NT0000000000000001 /* XCRemoteSwiftPackageReference "BigInt" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/attaswift/BigInt.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.4.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F6B1G1NT0000000000000002 /* BigInt */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F6B1G1NT0000000000000001 /* XCRemoteSwiftPackageReference "BigInt" */;
+			productName = BigInt;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F62E0BB32F42278400354D17 /* Project object */;
 }

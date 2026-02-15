@@ -1,5 +1,8 @@
 import SwiftUI
 import WebKit
+import os
+
+private let log = Logger(subsystem: "com.plether.EnclaveWallet", category: "WebView")
 
 struct WalledGardenWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
@@ -27,16 +30,18 @@ struct WalledGardenWebView: NSViewRepresentable {
                   let action = body["action"] as? String else { return }
 
             if action == "request_signature" {
-                let hashHex = body["hash"] as! String
-                let hashData = Data(hexString: hashHex.replacingOccurrences(of: "0x", with: ""))!
+                guard let hashHex = body["hash"] as? String,
+                      let hashData = Data(hexString: hashHex.replacingOccurrences(of: "0x", with: "")) else {
+                    log.error("Invalid hash payload")
+                    return
+                }
 
                 do {
                     let signature = try EnclaveEngine.shared.signEVMHash(payloadHash: hashData)
-
                     let js = "window.enclaveCallback('\(signature)');"
                     DispatchQueue.main.async { message.webView?.evaluateJavaScript(js, completionHandler: nil) }
                 } catch {
-                    print("User canceled Touch ID")
+                    log.info("User canceled Touch ID")
                 }
             }
         }

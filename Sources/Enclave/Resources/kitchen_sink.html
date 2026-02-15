@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head><style>body { font-family: -apple-system; padding: 20px; color: white; background: #1c1c1e; }</style></head>
+<body>
+    <h2>Enclave V1: Arbitrum Sandbox</h2>
+    <button onclick="sendTx()">Send 1 USDC</button>
+
+    <script>
+        function sendTx() {
+            const userOpHash = "0x...";
+            window.webkit.messageHandlers.enclaveAPI.postMessage({
+                action: "request_signature",
+                hash: userOpHash
+            });
+        }
+
+        window.enclaveCallback = function(signatureHex) {
+            console.log("Received Secure Enclave Signature:", signatureHex);
+        };
+    </script>
+</body>
+</html>

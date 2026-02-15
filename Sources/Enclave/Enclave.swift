@@ -1,9 +1,10 @@
-// The Swift Programming Language
-// https://docs.swift.org/swift-book
+import SwiftUI
 
 @main
-struct Enclave {
-    static func main() {
-        print("Hello, world!")
+struct EnclaveApp: App {
+    var body: some Scene {
+        WindowGroup {
+            WalledGardenWebView()
+        }
     }
 }

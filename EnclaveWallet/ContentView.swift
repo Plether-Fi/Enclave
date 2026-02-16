@@ -11,18 +11,23 @@ struct ContentView: View {
     @State private var usdcBalance: String = "..."
     @State private var showSend = false
     @State private var showReceive = false
+    @State private var selectedApp = "kitchen_sink"
+
+    private let apps: [(name: String, resource: String)] = [
+        ("Kitchen Sink", "kitchen_sink"),
+    ]
 
     var body: some View {
-        VStack(spacing: 0) {
-            toolbar
-            balanceBar
-            Divider()
-            HSplitView {
-                WalledGardenWebView()
-                    .frame(minWidth: 300)
-                ActivityWebView()
-                    .frame(minWidth: 220, idealWidth: 280, maxWidth: 360)
+        HSplitView {
+            VStack(spacing: 0) {
+                toolbar
+                balanceBar
+                Divider()
+                WalledGardenWebView(page: selectedApp)
             }
+            .frame(minWidth: 300)
+            ActivityWebView()
+                .frame(minWidth: 220, idealWidth: 280, maxWidth: 360)
         }
         .sheet(isPresented: $showSend) {
             SendView(onComplete: { refreshBalances() })
@@ -86,14 +91,29 @@ struct ContentView: View {
                     .clipShape(Capsule())
             }
 
-            Spacer()
-
             Button { showReceive = true } label: {
                 Label("Receive", systemImage: "arrow.down.circle")
             }
 
             Button { showSend = true } label: {
                 Label("Send", systemImage: "arrow.up.circle")
+            }
+
+            Spacer()
+
+            Menu {
+                ForEach(apps, id: \.resource) { app in
+                    Button(app.name) { selectedApp = app.resource }
+                }
+            } label: {
+                let displayName = apps.first(where: { $0.resource == selectedApp })?.name ?? selectedApp
+                Text(displayName)
+                    .font(.system(.caption))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.1))
+                    .clipShape(Capsule())
             }
         }
         .buttonStyle(.borderedProminent)

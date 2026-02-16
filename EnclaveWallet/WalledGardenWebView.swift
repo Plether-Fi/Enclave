@@ -5,6 +5,8 @@ import os
 private let log = Logger(subsystem: "com.plether.EnclaveWallet", category: "WebView")
 
 struct WalledGardenWebView: NSViewRepresentable {
+    var page: String
+
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.preferences.javaScriptCanOpenWindowsAutomatically = false
@@ -14,17 +16,31 @@ struct WalledGardenWebView: NSViewRepresentable {
         config.userContentController = userContentController
 
         let webView = WKWebView(frame: .zero, configuration: config)
-
-        if let url = Bundle.main.url(forResource: "kitchen_sink", withExtension: "html") {
-            webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-        }
+        loadPage(page, into: webView)
         return webView
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {}
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func updateNSView(_ nsView: WKWebView, context: Context) {
+        if context.coordinator.currentPage != page {
+            context.coordinator.currentPage = page
+            loadPage(page, into: nsView)
+        }
+    }
+
+    private func loadPage(_ page: String, into webView: WKWebView) {
+        if let url = Bundle.main.url(forResource: page, withExtension: "html") {
+            webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(page: page) }
 
     class Coordinator: NSObject, WKScriptMessageHandler {
+        var currentPage: String
+
+        init(page: String) {
+            self.currentPage = page
+        }
+
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let body = message.body as? [String: Any],
                   let action = body["action"] as? String else { return }

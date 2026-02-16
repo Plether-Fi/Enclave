@@ -13,6 +13,9 @@ private let log = Logger(subsystem: "com.plether.EnclaveWallet", category: "UI")
 struct ContentView: View {
     private let bgColor = Color.white
 
+    @State private var wallets: [Wallet] = EnclaveEngine.shared.wallets
+    @State private var selectedAddress: String = EnclaveEngine.shared.currentWallet?.displayAddress ?? "No Wallet"
+
     var body: some View {
         VStack(spacing: 0) {
             toolbar
@@ -22,19 +25,33 @@ struct ContentView: View {
         .background(bgColor)
     }
 
+    private func refreshWallets() {
+        wallets = EnclaveEngine.shared.wallets
+        selectedAddress = EnclaveEngine.shared.currentWallet?.displayAddress ?? "No Wallet"
+    }
+
     private var toolbar: some View {
         HStack(spacing: 12) {
             Menu {
+                ForEach(wallets, id: \.index) { wallet in
+                    Button(wallet.displayAddress) {
+                        EnclaveEngine.shared.selectWallet(at: wallet.index)
+                        refreshWallets()
+                    }
+                }
+
+                if !wallets.isEmpty { Divider() }
+
                 Button("New Wallet") {
                     do {
                         try EnclaveEngine.shared.generateKey()
-                        log.info("New wallet created")
+                        refreshWallets()
                     } catch {
-                        log.error("Key generation failed: \(error.localizedDescription)")
+                        log.error("Key generation failed: \(error.localizedDescription, privacy: .public)")
                     }
                 }
             } label: {
-                Text("0xAbCd...VwXy")
+                Text(selectedAddress)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(.black)
                     .padding(.horizontal, 10)
@@ -45,11 +62,11 @@ struct ContentView: View {
 
             Spacer()
 
-            Button { log.info("Receive tapped") } label: {
+            Button { log.notice("Receive tapped") } label: {
                 Label("Receive", systemImage: "arrow.down.circle")
             }
 
-            Button { log.info("Send tapped") } label: {
+            Button { log.notice("Send tapped") } label: {
                 Label("Send", systemImage: "arrow.up.circle")
             }
         }

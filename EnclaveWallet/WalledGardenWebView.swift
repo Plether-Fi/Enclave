@@ -41,7 +41,7 @@ struct WalledGardenWebView: NSViewRepresentable {
                     let js = "window.enclaveCallback('\(signature)');"
                     DispatchQueue.main.async { message.webView?.evaluateJavaScript(js, completionHandler: nil) }
                 } catch {
-                    log.info("User canceled Touch ID")
+                    log.notice("User canceled Touch ID")
                 }
             }
         }

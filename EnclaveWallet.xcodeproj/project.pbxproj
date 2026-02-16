@@ -66,6 +66,7 @@
 			name = EnclaveWallet;
 			packageProductDependencies = (
 				F6B1G1NT0000000000000002 /* BigInt */,
+				F6CRYPT000000000000000002 /* CryptoSwift */,
 			);
 			productName = EnclaveWallet;
 			productReference = F62E0BBB2F42278400354D17 /* EnclaveWallet.app */;
@@ -99,6 +100,7 @@
 			productRefGroup = F62E0BBC2F42278400354D17 /* Products */;
 			packageReferences = (
 				F6B1G1NT0000000000000001 /* XCRemoteSwiftPackageReference "BigInt" */,
+				F6CRYPT000000000000000001 /* XCRemoteSwiftPackageReference "CryptoSwift" */,
 			);
 			projectDirPath = "";
 			projectRoot = "";
@@ -343,6 +345,14 @@
 				minimumVersion = 5.4.1;
 			};
 		};
+		F6CRYPT000000000000000001 /* XCRemoteSwiftPackageReference "CryptoSwift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/krzyzanowskim/CryptoSwift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.8.3;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -350,6 +360,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F6B1G1NT0000000000000001 /* XCRemoteSwiftPackageReference "BigInt" */;
 			productName = BigInt;
+		};
+		F6CRYPT000000000000000002 /* CryptoSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F6CRYPT000000000000000001 /* XCRemoteSwiftPackageReference "CryptoSwift" */;
+			productName = CryptoSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

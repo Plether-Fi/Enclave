@@ -33,6 +33,7 @@ struct WalledGardenWebView: NSViewRepresentable {
                 guard let hashHex = body["hash"] as? String,
                       let hashData = Data(hexString: hashHex.replacingOccurrences(of: "0x", with: "")) else {
                     log.error("Invalid hash payload")
+                    DispatchQueue.main.async { message.webView?.evaluateJavaScript("window.enclaveError('Invalid hash')", completionHandler: nil) }
                     return
                 }
 
@@ -42,6 +43,12 @@ struct WalledGardenWebView: NSViewRepresentable {
                     DispatchQueue.main.async { message.webView?.evaluateJavaScript(js, completionHandler: nil) }
                 } catch {
                     log.notice("User canceled Touch ID")
+                    let js = "window.enclaveError('User canceled authentication');"
+                    DispatchQueue.main.async {
+                        message.webView?.evaluateJavaScript(js) { _, err in
+                            if let err { log.error("JS error callback failed: \(err.localizedDescription, privacy: .public)") }
+                        }
+                    }
                 }
             }
         }

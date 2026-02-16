@@ -1,12 +1,21 @@
 <!DOCTYPE html>
 <html>
-<head><style>body { font-family: -apple-system; padding: 20px; color: white; background: #1c1c1e; }</style></head>
+<head><style>body { font-family: -apple-system; padding: 20px; color: white; background: #1c1c1e; }
+#status { margin-top: 16px; padding: 10px; border-radius: 8px; display: none; }
+#status.success { display: block; background: #1b3a2a; color: #4ade80; }
+#status.failure { display: block; background: #3a1b1b; color: #f87171; }
+</style></head>
 <body>
     <h2>Enclave V1: Arbitrum Sandbox</h2>
     <button onclick="sendTx()">Send 1 USDC</button>
+    <div id="status"></div>
 
     <script>
+        const status = document.getElementById('status');
+
         function sendTx() {
+            status.className = '';
+            status.removeAttribute('style');
             const userOpHash = "0xa1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
             window.webkit.messageHandlers.enclaveAPI.postMessage({
                 action: "request_signature",
@@ -15,7 +24,13 @@
         }
 
         window.enclaveCallback = function(signatureHex) {
-            console.log("Received Secure Enclave Signature:", signatureHex);
+            status.textContent = 'Signed: ' + signatureHex.slice(0, 16) + '...';
+            status.className = 'success';
+        };
+
+        window.enclaveError = function(message) {
+            status.textContent = message;
+            status.className = 'failure';
         };
     </script>
 </body>

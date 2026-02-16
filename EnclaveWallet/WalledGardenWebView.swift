@@ -31,7 +31,7 @@ struct WalledGardenWebView: NSViewRepresentable {
 
             if action == "request_signature" {
                 guard let hashHex = body["hash"] as? String,
-                      let hashData = Data(hexString: hashHex.replacingOccurrences(of: "0x", with: "")) else {
+                      let hashData = hashHex.stripHexPrefix().hexToData() else {
                     log.error("Invalid hash payload")
                     DispatchQueue.main.async { message.webView?.evaluateJavaScript("window.enclaveError('Invalid hash')", completionHandler: nil) }
                     return
@@ -55,17 +55,51 @@ struct WalledGardenWebView: NSViewRepresentable {
     }
 }
 
-private extension Data {
-    init?(hexString: String) {
-        let len = hexString.count / 2
-        var data = Data(capacity: len)
-        var index = hexString.startIndex
-        for _ in 0..<len {
-            let nextIndex = hexString.index(index, offsetBy: 2)
-            guard let byte = UInt8(hexString[index..<nextIndex], radix: 16) else { return nil }
-            data.append(byte)
-            index = nextIndex
+struct ActivityWebView: NSViewRepresentable {
+    func makeNSView(context: Context) -> WKWebView {
+        let webView = WKWebView(frame: .zero)
+        webView.navigationDelegate = context.coordinator
+        context.coordinator.webView = webView
+
+        if let url = Bundle.main.url(forResource: "activity", withExtension: "html") {
+            webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         }
-        self = data
+        return webView
+    }
+
+    func updateNSView(_ nsView: WKWebView, context: Context) {}
+    func makeCoordinator() -> ActivityCoordinator { ActivityCoordinator() }
+
+    class ActivityCoordinator: NSObject, WKNavigationDelegate {
+        weak var webView: WKWebView?
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            loadTransactionHistory()
+        }
+
+        func loadTransactionHistory() {
+            guard let address = EnclaveEngine.shared.currentWallet?.address else { return }
+            Task {
+                let txs = await TransactionHistoryService.shared.fetchHistory(address: address)
+                let jsonItems = txs.prefix(20).map { tx -> [String: Any] in
+                    let formatter = RelativeDateTimeFormatter()
+                    formatter.unitsStyle = .short
+                    let timeStr = formatter.localizedString(for: tx.timestamp, relativeTo: Date())
+                    return [
+                        "incoming": tx.isIncoming,
+                        "address": tx.displayAddress,
+                        "value": tx.value,
+                        "time": timeStr,
+                    ]
+                }
+                guard let jsonData = try? JSONSerialization.data(withJSONObject: jsonItems),
+                      let jsonString = String(data: jsonData, encoding: .utf8) else { return }
+                let escaped = jsonString.replacingOccurrences(of: "'", with: "\\'")
+                let js = "window.updateHistory('\(escaped)');"
+                await MainActor.run {
+                    webView?.evaluateJavaScript(js, completionHandler: nil)
+                }
+            }
+        }
     }
 }

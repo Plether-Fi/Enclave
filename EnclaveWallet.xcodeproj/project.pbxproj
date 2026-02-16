@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F66FE4C12F431A88006DFAF2 /* BigInt in Frameworks */ = {isa = PBXBuildFile; productRef = F6B1G1NT0000000000000002 /* BigInt */; };
+		F66FE4C22F431A88006DFAF2 /* CryptoSwift in Frameworks */ = {isa = PBXBuildFile; productRef = F6CRYPT000000000000000002 /* CryptoSwift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		F62E0BBB2F42278400354D17 /* EnclaveWallet.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EnclaveWallet.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +28,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F66FE4C22F431A88006DFAF2 /* CryptoSwift in Frameworks */,
+				F66FE4C12F431A88006DFAF2 /* BigInt in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -96,12 +103,12 @@
 			);
 			mainGroup = F62E0BB22F42278400354D17;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
-			productRefGroup = F62E0BBC2F42278400354D17 /* Products */;
 			packageReferences = (
 				F6B1G1NT0000000000000001 /* XCRemoteSwiftPackageReference "BigInt" */,
 				F6CRYPT000000000000000001 /* XCRemoteSwiftPackageReference "CryptoSwift" */,
 			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F62E0BBC2F42278400354D17 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (

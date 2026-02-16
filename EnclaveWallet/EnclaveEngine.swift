@@ -43,7 +43,7 @@ class EnclaveEngine: @unchecked Sendable {
         let accessControl = SecAccessControlCreateWithFlags(
             nil,
             kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            [.privateKeyUsage, .biometryCurrentSet],
+            [.privateKeyUsage, .or, .biometryCurrentSet, .devicePasscode],
             nil
         )!
 

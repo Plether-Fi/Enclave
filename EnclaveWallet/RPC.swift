@@ -78,6 +78,34 @@ actor RPCClient {
         return try await call(method: "eth_call", params: [callObj, "latest"])
     }
 
+    func getGasPrice() async throws -> UInt64 {
+        let hex = try await call(method: "eth_gasPrice", params: [])
+        return UInt64(hex.stripHexPrefix(), radix: 16) ?? 1_000_000_000
+    }
+
+    func getMaxPriorityFeePerGas() async throws -> UInt64 {
+        let hex = try await call(method: "eth_maxPriorityFeePerGas", params: [])
+        return UInt64(hex.stripHexPrefix(), radix: 16) ?? 1_000_000_000
+    }
+
+    func getCode(address: String) async throws -> String {
+        try await call(method: "eth_getCode", params: [address, "latest"])
+    }
+
+    func getBlockNumber() async throws -> UInt64 {
+        let hex = try await call(method: "eth_blockNumber", params: [])
+        return UInt64(hex.stripHexPrefix(), radix: 16) ?? 0
+    }
+
+    func estimateGas(to: String, from: String? = nil, data: String? = nil, value: String? = nil) async throws -> UInt64 {
+        var callObj: [String: String] = ["to": to]
+        if let from { callObj["from"] = from }
+        if let data { callObj["data"] = data }
+        if let value { callObj["value"] = value }
+        let hex = try await call(method: "eth_estimateGas", params: [callObj, "latest"])
+        return UInt64(hex.stripHexPrefix(), radix: 16) ?? 0
+    }
+
     func getFactoryAddress(pubKeyX: String, pubKeyY: String, salt: UInt64) async throws -> String {
         let selector = "e81b22ea"
         let x = pubKeyX.leftPadded(toLength: 64)
@@ -97,6 +125,10 @@ nonisolated struct Wei: Sendable {
 
     init(hex: String) {
         self.value = BigUInt(hex.stripHexPrefix(), radix: 16) ?? 0
+    }
+
+    init(bigUInt: BigUInt) {
+        self.value = bigUInt
     }
 
     var isZero: Bool { value == 0 }

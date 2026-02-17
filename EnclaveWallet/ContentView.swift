@@ -133,13 +133,22 @@ struct ContentView: View {
                 Text("USDC").foregroundColor(.secondary)
             }
             Spacer()
-            Text(Config.activeNetwork.displayName)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Color.secondary.opacity(0.1))
-                .clipShape(Capsule())
+            Menu {
+                ForEach(Network.allCases, id: \.rawValue) { network in
+                    Button(network.displayName) {
+                        Config.activeNetwork = network
+                        refreshBalances()
+                    }
+                }
+            } label: {
+                Text(Config.activeNetwork.displayName)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.secondary.opacity(0.1))
+                    .clipShape(Capsule())
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -157,6 +166,9 @@ struct SendView: View {
     @State private var selectedToken: Token = .eth
     @State private var status: SendStatus = .idle
     @State private var txHash = ""
+    @State private var pendingOp: UserOperation?
+    @State private var decodedActions: [DecodedAction] = []
+    @State private var estimatedGasCost: String = ""
 
     enum Token: String, CaseIterable {
         case eth = "ETH"
@@ -164,7 +176,7 @@ struct SendView: View {
     }
 
     enum SendStatus {
-        case idle, building, signing, submitting, waiting, success, error(String)
+        case idle, building, previewing, signing, submitting, waiting, success, error(String)
     }
 
     var body: some View {
@@ -191,6 +203,18 @@ struct SendView: View {
                 preview
             }
 
+            if case .previewing = status {
+                TransactionPreviewView(
+                    actions: decodedActions,
+                    estimatedGas: estimatedGasCost,
+                    onApprove: { confirmAndSign() },
+                    onReject: {
+                        status = .idle
+                        pendingOp = nil
+                    }
+                )
+            }
+
             statusView
 
             HStack {
@@ -199,7 +223,7 @@ struct SendView: View {
 
                 Spacer()
 
-                Button("Send") { sendTransaction() }
+                Button("Send") { buildTransaction() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSend)
             }
@@ -231,6 +255,7 @@ struct SendView: View {
         switch status {
         case .idle: EmptyView()
         case .building: ProgressView("Building transaction...")
+        case .previewing: EmptyView()
         case .signing: ProgressView("Waiting for Touch ID...")
         case .submitting: ProgressView("Submitting to bundler...")
         case .waiting: ProgressView("Waiting for confirmation...")
@@ -248,7 +273,7 @@ struct SendView: View {
         }
     }
 
-    private func sendTransaction() {
+    private func buildTransaction() {
         guard let wallet = EnclaveEngine.shared.currentWallet else { return }
 
         Task {
@@ -281,6 +306,13 @@ struct SendView: View {
                     )
                 }
 
+                let (gasPrice, priorityFee) = try await (
+                    RPCClient.shared.getGasPrice(),
+                    RPCClient.shared.getMaxPriorityFeePerGas()
+                )
+                op.maxFeePerGas = gasPrice
+                op.maxPriorityFeePerGas = priorityFee
+
                 let gasEstimate = try await BundlerClient.shared.estimateGas(
                     op.toDict(), entryPoint: Config.entryPointAddress
                 )
@@ -288,6 +320,25 @@ struct SendView: View {
                 op.verificationGasLimit = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? op.verificationGasLimit
                 op.callGasLimit = UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? op.callGasLimit
 
+                let totalGas = op.preVerificationGas + op.verificationGasLimit + op.callGasLimit
+                let gasCostWei = BigUInt(totalGas) * BigUInt(op.maxFeePerGas)
+                estimatedGasCost = Wei(bigUInt: gasCostWei).ethFormatted + " ETH"
+
+                decodedActions = CalldataDecoder.decode(callData: op.callData)
+                pendingOp = op
+                status = .previewing
+            } catch {
+                status = .error(error.localizedDescription)
+                log.error("Build failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    private func confirmAndSign() {
+        guard var op = pendingOp else { return }
+
+        Task {
+            do {
                 status = .signing
 
                 let chainId = Config.activeNetwork.chainId
@@ -308,6 +359,7 @@ struct SendView: View {
 
                 if receipt.success {
                     status = .success
+                    pendingOp = nil
                     onComplete()
                 } else {
                     status = .error("Transaction reverted")
@@ -402,5 +454,74 @@ struct ReceiveView: View {
         let nsImage = NSImage(size: rep.size)
         nsImage.addRepresentation(rep)
         return nsImage
+    }
+}
+
+// MARK: - Transaction Preview
+
+struct TransactionPreviewView: View {
+    let actions: [DecodedAction]
+    let estimatedGas: String
+    let onApprove: () -> Void
+    let onReject: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Review Transaction")
+                .font(.headline)
+
+            ForEach(Array(actions.enumerated()), id: \.offset) { _, action in
+                HStack(spacing: 8) {
+                    Image(systemName: iconForAction(action))
+                        .foregroundColor(colorForAction(action))
+                    Text(action.description)
+                        .font(.system(.body, design: .monospaced))
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.secondary.opacity(0.08))
+                .cornerRadius(6)
+            }
+
+            if !estimatedGas.isEmpty {
+                HStack {
+                    Text("Estimated gas:")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(estimatedGas)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            HStack {
+                Button("Reject") { onReject() }
+                Spacer()
+                Button("Approve & Sign") { onApprove() }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(12)
+        .background(Color.secondary.opacity(0.05))
+        .cornerRadius(10)
+    }
+
+    private func iconForAction(_ action: DecodedAction) -> String {
+        switch action {
+        case .ethTransfer: return "arrow.up.circle.fill"
+        case .erc20Transfer: return "arrow.up.circle.fill"
+        case .erc20Approve: return "checkmark.shield.fill"
+        case .contractCall: return "doc.text.fill"
+        case .unknown: return "questionmark.circle.fill"
+        }
+    }
+
+    private func colorForAction(_ action: DecodedAction) -> Color {
+        switch action {
+        case .ethTransfer, .erc20Transfer: return .orange
+        case .erc20Approve: return .yellow
+        case .contractCall: return .blue
+        case .unknown: return .gray
+        }
     }
 }

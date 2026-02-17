@@ -1,37 +1,123 @@
 <!DOCTYPE html>
 <html>
-<head><style>body { font-family: -apple-system; padding: 20px; color: white; background: #1c1c1e; }
-#status { margin-top: 16px; padding: 10px; border-radius: 8px; display: none; }
-#status.success { display: block; background: #1b3a2a; color: #4ade80; }
-#status.failure { display: block; background: #3a1b1b; color: #f87171; }
+<head><style>
+body { font-family: -apple-system; padding: 20px; color: white; background: #1c1c1e; }
+button { padding: 10px 16px; border-radius: 8px; border: 1px solid #444; background: #2c2c2e; color: white; cursor: pointer; margin: 4px 0; font-size: 14px; }
+button:hover { background: #3a3a3c; }
+.section { margin-bottom: 24px; }
+.section h3 { color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+#log { font-family: ui-monospace, monospace; font-size: 12px; background: #111; padding: 12px; border-radius: 8px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+.log-entry { margin: 4px 0; }
+.log-success { color: #4ade80; }
+.log-error { color: #f87171; }
+.log-info { color: #60a5fa; }
 </style></head>
 <body>
-    <h2>Enclave V1: Arbitrum Sandbox</h2>
-    <button onclick="sendTx()">Send 1 USDC</button>
-    <div id="status"></div>
+    <h2>Enclave V2: Kitchen Sink</h2>
+
+    <div class="section">
+        <h3>Connection</h3>
+        <button onclick="connect()">Connect Wallet</button>
+        <button onclick="getChainId()">Get Chain ID</button>
+        <button onclick="getBalance()">Get Balance</button>
+        <button onclick="getBlockNumber()">Get Block Number</button>
+    </div>
+
+    <div class="section">
+        <h3>Signing</h3>
+        <button onclick="personalSign()">Sign Message</button>
+    </div>
+
+    <div class="section">
+        <h3>Transactions</h3>
+        <button onclick="sendETH()">Send 0.0001 ETH</button>
+    </div>
+
+    <div id="log"></div>
 
     <script>
-        const status = document.getElementById('status');
-
-        function sendTx() {
-            status.className = '';
-            status.removeAttribute('style');
-            const userOpHash = "0xa1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
-            window.webkit.messageHandlers.enclaveAPI.postMessage({
-                action: "request_signature",
-                hash: userOpHash
-            });
+        const logEl = document.getElementById('log');
+        function appendLog(text, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry log-' + type;
+            entry.textContent = '> ' + text;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
         }
 
-        window.enclaveCallback = function(signatureHex) {
-            status.textContent = 'Signed: ' + signatureHex.slice(0, 16) + '...';
-            status.className = 'success';
-        };
+        async function connect() {
+            try {
+                const accounts = await enclave.request({ method: 'eth_requestAccounts' });
+                appendLog('Connected: ' + JSON.stringify(accounts), 'success');
+            } catch (e) {
+                appendLog('Connect failed: ' + (e.message || e), 'error');
+            }
+        }
 
-        window.enclaveError = function(message) {
-            status.textContent = message;
-            status.className = 'failure';
-        };
+        async function getChainId() {
+            try {
+                const chainId = await enclave.request({ method: 'eth_chainId' });
+                appendLog('Chain ID: ' + chainId + ' (' + parseInt(chainId, 16) + ')', 'info');
+            } catch (e) {
+                appendLog('Error: ' + (e.message || e), 'error');
+            }
+        }
+
+        async function getBalance() {
+            try {
+                const accounts = await enclave.request({ method: 'eth_accounts' });
+                if (!accounts.length) { appendLog('No accounts connected', 'error'); return; }
+                const balance = await enclave.request({ method: 'eth_getBalance', params: [accounts[0], 'latest'] });
+                const ethBalance = parseInt(balance, 16) / 1e18;
+                appendLog('Balance: ' + ethBalance.toFixed(6) + ' ETH', 'info');
+            } catch (e) {
+                appendLog('Error: ' + (e.message || e), 'error');
+            }
+        }
+
+        async function getBlockNumber() {
+            try {
+                const block = await enclave.request({ method: 'eth_blockNumber' });
+                appendLog('Block: ' + parseInt(block, 16), 'info');
+            } catch (e) {
+                appendLog('Error: ' + (e.message || e), 'error');
+            }
+        }
+
+        async function personalSign() {
+            try {
+                const accounts = await enclave.request({ method: 'eth_accounts' });
+                if (!accounts.length) { appendLog('No accounts connected', 'error'); return; }
+                const message = '0x' + Array.from(new TextEncoder().encode('Hello from Enclave V2!')).map(b => b.toString(16).padStart(2, '0')).join('');
+                const sig = await enclave.request({ method: 'personal_sign', params: [message, accounts[0]] });
+                appendLog('Signature: ' + sig.slice(0, 20) + '...', 'success');
+            } catch (e) {
+                appendLog('Sign failed: ' + (e.message || e), 'error');
+            }
+        }
+
+        async function sendETH() {
+            try {
+                const accounts = await enclave.request({ method: 'eth_accounts' });
+                if (!accounts.length) { appendLog('No accounts connected', 'error'); return; }
+                appendLog('Sending 0.0001 ETH to self...', 'info');
+                const txHash = await enclave.request({
+                    method: 'eth_sendTransaction',
+                    params: [{
+                        from: accounts[0],
+                        to: accounts[0],
+                        value: '0x5AF3107A4000',
+                        data: '0x'
+                    }]
+                });
+                appendLog('TX Hash: ' + txHash, 'success');
+            } catch (e) {
+                appendLog('Send failed: ' + (e.message || e), 'error');
+            }
+        }
+
+        appendLog('Enclave V2 Kitchen Sink loaded', 'info');
+        appendLog('Provider available: ' + (typeof enclave !== 'undefined'), 'info');
     </script>
 </body>
 </html>

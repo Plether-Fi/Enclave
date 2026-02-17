@@ -13,9 +13,17 @@ struct WalledGardenWebView: NSViewRepresentable {
 
         let userContentController = WKUserContentController()
         userContentController.add(context.coordinator, name: "enclaveAPI")
+
+        let providerScript = WKUserScript(
+            source: ProviderBridge.injectedScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
+        userContentController.addUserScript(providerScript)
         config.userContentController = userContentController
 
         let webView = WKWebView(frame: .zero, configuration: config)
+        context.coordinator.webView = webView
         loadPage(page, into: webView)
         return webView
     }
@@ -36,16 +44,32 @@ struct WalledGardenWebView: NSViewRepresentable {
 
     class Coordinator: NSObject, WKScriptMessageHandler {
         var currentPage: String
+        weak var webView: WKWebView?
+        private var bridge: ProviderBridge?
 
         init(page: String) {
             self.currentPage = page
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard let body = message.body as? [String: Any],
-                  let action = body["action"] as? String else { return }
+            guard let body = message.body as? [String: Any] else { return }
 
-            if action == "request_signature" {
+            // V2 protocol: {id, method, params}
+            if let request = BridgeRequest(from: body) {
+                if bridge == nil {
+                    bridge = ProviderBridge(webView: message.webView, appId: currentPage)
+                }
+                Task {
+                    if let wv = message.webView {
+                        bridge?.updateWebView(wv)
+                    }
+                    await bridge?.handle(request)
+                }
+                return
+            }
+
+            // V1 backward compat: {action, hash}
+            if let action = body["action"] as? String, action == "request_signature" {
                 guard let hashHex = body["hash"] as? String,
                       let hashData = hashHex.stripHexPrefix().hexToData() else {
                     log.error("Invalid hash payload")

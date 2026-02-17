@@ -90,6 +90,49 @@ struct UserOperation {
         return Data(selector) + dest + value + dataOffset + dataLen
     }
 
+    static func buildExecuteCallData(to: String, value: BigUInt, data: Data) -> Data {
+        let executeSelector = "b61d27f6".hexToData() ?? Data()
+        let dest = abiEncodeAddress(to)
+        let ethValue = abiEncodeUint256BigInt(value)
+        let dataOffset = abiEncodeUint256("0x60")
+        let dataLen = abiEncodeUint256("0x" + String(data.count, radix: 16))
+        let paddedData = data + Data(repeating: 0, count: (32 - data.count % 32) % 32)
+
+        return Data(executeSelector) + dest + ethValue + dataOffset + dataLen + paddedData
+    }
+
+    static func buildBatchCallData(calls: [(to: String, value: BigUInt, data: Data)]) -> Data {
+        let batchSelector = "34fcd5be".hexToData() ?? Data()
+
+        var callsEncoded = Data()
+        var offsets: [Int] = []
+        var dynamicParts = Data()
+
+        for call in calls {
+            offsets.append(dynamicParts.count)
+
+            var callEncoded = Data()
+            callEncoded.append(abiEncodeAddress(call.to))
+            callEncoded.append(abiEncodeUint256BigInt(call.value))
+            callEncoded.append(abiEncodeUint256("0x60"))
+            callEncoded.append(abiEncodeUint256("0x" + String(call.data.count, radix: 16)))
+            callEncoded.append(call.data)
+            callEncoded.append(Data(repeating: 0, count: (32 - call.data.count % 32) % 32))
+
+            dynamicParts.append(callEncoded)
+        }
+
+        let offsetBase = calls.count * 32
+        callsEncoded.append(abiEncodeUint256("0x20"))
+        callsEncoded.append(abiEncodeUint256("0x" + String(calls.count, radix: 16)))
+        for offset in offsets {
+            callsEncoded.append(abiEncodeUint256("0x" + String(offsetBase + offset, radix: 16)))
+        }
+        callsEncoded.append(dynamicParts)
+
+        return Data(batchSelector) + callsEncoded
+    }
+
     static func buildERC20Transfer(token: String, to: String, amount: BigUInt) -> Data {
         let transferSelector = "a9059cbb".hexToData() ?? Data()
         let recipient = abiEncodeAddress(to)

@@ -123,14 +123,10 @@ class EnclaveEngine: @unchecked Sendable {
         for i in wallets.indices {
             let address = wallets[i].address
             do {
-                let count = try await RPCClient.shared.getTransactionCount(address: address)
-                wallets[i].isDeployed = count > 0
+                let code = try await RPCClient.shared.getCode(address: address)
+                wallets[i].isDeployed = code != "0x" && code != "0x0" && code.count > 4
             } catch {
-                let code = try? await RPCClient.shared.ethCall(
-                    to: address,
-                    data: "0x"
-                )
-                wallets[i].isDeployed = code != nil && code != "0x"
+                wallets[i].isDeployed = false
             }
         }
     }

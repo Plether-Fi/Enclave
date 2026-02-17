@@ -93,6 +93,38 @@ actor BundlerClient {
         return try JSONDecoder().decode(UserOperationReceipt.self, from: data)
     }
 
+    func getPaymasterData(_ op: [String: String], entryPoint: String) async throws -> String? {
+        guard let paymasterURL = Config.paymasterURL else { return nil }
+
+        let id = nextId()
+        let body: [String: Any] = [
+            "jsonrpc": "2.0",
+            "method": "pm_sponsorUserOperation",
+            "params": [op, entryPoint],
+            "id": id
+        ]
+
+        var request = URLRequest(url: paymasterURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, _) = try await session.data(for: request)
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        if let error = json["error"] as? [String: Any] {
+            log.notice("Paymaster declined: \(error["message"] as? String ?? "unknown", privacy: .public)")
+            return nil
+        }
+        guard let result = json["result"] as? [String: Any],
+              let paymasterAndData = result["paymasterAndData"] as? String else {
+            return nil
+        }
+        return paymasterAndData
+    }
+
     func waitForReceipt(hash: String, timeout: TimeInterval = 60) async throws -> UserOperationReceipt {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

@@ -27,17 +27,31 @@ struct UserOperation {
     }
 
     func toDict() -> [String: String] {
-        [
+        var dict: [String: String] = [
             "sender": sender,
             "nonce": nonce,
-            "initCode": "0x" + initCode.hex,
             "callData": "0x" + callData.hex,
-            "accountGasLimits": "0x" + accountGasLimits.hex,
+            "callGasLimit": "0x" + String(callGasLimit, radix: 16),
+            "verificationGasLimit": "0x" + String(verificationGasLimit, radix: 16),
             "preVerificationGas": "0x" + String(preVerificationGas, radix: 16),
-            "gasFees": "0x" + gasFees.hex,
-            "paymasterAndData": "0x" + paymasterAndData.hex,
+            "maxFeePerGas": "0x" + String(maxFeePerGas, radix: 16),
+            "maxPriorityFeePerGas": "0x" + String(maxPriorityFeePerGas, radix: 16),
             "signature": "0x" + signature.hex,
         ]
+
+        if !initCode.isEmpty && initCode.count > 20 {
+            dict["factory"] = "0x" + initCode.prefix(20).hex
+            dict["factoryData"] = "0x" + initCode.dropFirst(20).hex
+        }
+
+        if !paymasterAndData.isEmpty && paymasterAndData.count > 20 {
+            dict["paymaster"] = "0x" + paymasterAndData.prefix(20).hex
+            dict["paymasterVerificationGasLimit"] = "0x" + String(verificationGasLimit, radix: 16)
+            dict["paymasterPostOpGasLimit"] = "0x" + String(callGasLimit, radix: 16)
+            dict["paymasterData"] = "0x" + paymasterAndData.dropFirst(20).hex
+        }
+
+        return dict
     }
 
     // MARK: - UserOp Hash (for signing)

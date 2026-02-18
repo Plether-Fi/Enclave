@@ -53,15 +53,19 @@ actor BundlerClient {
         let (data, _) = try await session.data(for: request)
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            log.error("Bundler response not JSON: \(String(data: data, encoding: .utf8) ?? "nil", privacy: .public)")
             throw RPCError.invalidResponse
         }
         if let error = json["error"] as? [String: Any] {
+            let msg = error["message"] as? String ?? "Unknown"
+            log.error("Bundler error: \(msg, privacy: .public)")
             throw RPCError.serverError(
                 code: error["code"] as? Int ?? -1,
-                message: error["message"] as? String ?? "Unknown"
+                message: msg
             )
         }
         guard let result = json["result"] else {
+            log.error("Bundler response missing 'result': \(json.keys.joined(separator: ","), privacy: .public)")
             throw RPCError.invalidResponse
         }
         return result

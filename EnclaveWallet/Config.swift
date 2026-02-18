@@ -14,18 +14,18 @@ nonisolated enum Network: String, CaseIterable, Sendable {
     var rpcURL: URL {
         switch self {
         case .arbitrumSepolia:
-            URL(string: "https://sepolia-rollup.arbitrum.io/rpc")!
+            URL(string: "https://arb-sepolia.g.alchemy.com/v2/\(Secrets.alchemyAPIKey)")!
         case .arbitrumOne:
-            URL(string: "https://arb1.arbitrum.io/rpc")!
+            URL(string: "https://arb-mainnet.g.alchemy.com/v2/\(Secrets.alchemyAPIKey)")!
         }
     }
 
     var bundlerURL: URL {
         switch self {
         case .arbitrumSepolia:
-            URL(string: "https://public.stackup.sh/api/v1/node/arbitrum-sepolia")!
+            URL(string: "https://arb-sepolia.g.alchemy.com/v2/\(Secrets.alchemyAPIKey)")!
         case .arbitrumOne:
-            URL(string: "https://public.stackup.sh/api/v1/node/arbitrum-one")!
+            URL(string: "https://arb-mainnet.g.alchemy.com/v2/\(Secrets.alchemyAPIKey)")!
         }
     }
 

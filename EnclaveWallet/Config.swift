@@ -56,8 +56,7 @@ nonisolated enum Network: String, CaseIterable, Sendable {
 nonisolated enum Config {
     static let entryPointAddress = "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
 
-    // Update after deploying EnclaveWalletFactory to Arbitrum Sepolia
-    static let factoryAddress = "0x0000000000000000000000000000000000000000"
+    static let factoryAddress = "0x4e649ec237BEDefF7Ec50557eb1FD5eb8106a64C"
 
     // Paymaster URL (set to nil to disable gas sponsorship)
     static var paymasterURL: URL?

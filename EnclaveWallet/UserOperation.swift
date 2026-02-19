@@ -10,7 +10,7 @@ struct UserOperation {
     var nonce: String = "0x0"
     var initCode: Data = Data()
     var callData: Data = Data()
-    var verificationGasLimit: UInt64 = 5_000_000
+    var verificationGasLimit: UInt64 = 500_000
     var callGasLimit: UInt64 = 200_000
     var preVerificationGas: UInt64 = 100_000
     var maxFeePerGas: UInt64 = 1_000_000_000

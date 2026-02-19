@@ -147,7 +147,7 @@ class ProviderBridge {
         do {
             var op = UserOperation(sender: wallet.address)
 
-            let nonce = try await RPCClient.shared.getTransactionCount(address: wallet.address)
+            let nonce = try await RPCClient.shared.getEntryPointNonce(sender: wallet.address)
             op.nonce = "0x" + String(nonce, radix: 16)
 
             if !wallet.isDeployed {
@@ -156,6 +156,7 @@ class ProviderBridge {
                     pubKeyY: wallet.pubKeyY,
                     salt: UInt64(wallet.index)
                 )
+                op.verificationGasLimit = 2_000_000
             }
 
             let innerCalldata = dataHex.stripHexPrefix().hexToData() ?? Data()
@@ -165,8 +166,9 @@ class ProviderBridge {
                 RPCClient.shared.getGasPrice(),
                 RPCClient.shared.getMaxPriorityFeePerGas()
             )
-            op.maxFeePerGas = gasPrice
+            op.maxFeePerGas = gasPrice * 12 / 10
             op.maxPriorityFeePerGas = priorityFee
+            op.signature = Data(repeating: 0, count: 64)
 
             let gasEstimate = try await BundlerClient.shared.estimateGas(
                 op.toDict(), entryPoint: Config.entryPointAddress

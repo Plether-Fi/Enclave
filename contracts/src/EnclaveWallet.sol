@@ -9,7 +9,8 @@ contract EnclaveWallet is BaseAccount {
     uint256 public immutable pubKeyX;
     uint256 public immutable pubKeyY;
 
-    address constant P256_VERIFIER = 0x0000000000000000000000000000000000000100;
+    address constant P256_PRECOMPILE = 0x0000000000000000000000000000000000000100;
+    address constant P256_VERIFIER = 0xc2b78104907F722DABAc4C69f826a522B2754De4;
 
     // EIP-1271
     bytes4 private constant EIP1271_MAGIC = 0x1626ba7e;
@@ -105,8 +106,13 @@ contract EnclaveWallet is BaseAccount {
     }
 
     function _verifyP256(bytes32 hash, uint256 r, uint256 s) private view returns (bool) {
-        bytes memory payload = abi.encode(hash, r, s, pubKeyX, pubKeyY);
-        (bool success, bytes memory ret) = P256_VERIFIER.staticcall(payload);
+        bytes32 digest = sha256(abi.encodePacked(hash));
+        bytes memory payload = abi.encode(digest, r, s, pubKeyX, pubKeyY);
+        (bool success, bytes memory ret) = P256_PRECOMPILE.staticcall(payload);
+        if (success && ret.length == 32 && abi.decode(ret, (uint256)) == 1) {
+            return true;
+        }
+        (success, ret) = P256_VERIFIER.staticcall(payload);
         return success && ret.length == 32 && abi.decode(ret, (uint256)) == 1;
     }
 

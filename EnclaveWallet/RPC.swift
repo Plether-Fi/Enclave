@@ -68,6 +68,12 @@ actor RPCClient {
         return UInt64(hex.stripHexPrefix(), radix: 16) ?? 0
     }
 
+    func getEntryPointNonce(sender: String) async throws -> UInt64 {
+        let data = "0x35567e1a" + sender.leftPadded(toLength: 64) + String(repeating: "0", count: 64)
+        let result = try await ethCall(to: Config.entryPointAddress, data: data)
+        return UInt64(result.stripHexPrefix().prefix(16), radix: 16) ?? 0
+    }
+
     func getChainId() async throws -> UInt64 {
         let hex = try await call(method: "eth_chainId", params: [])
         return UInt64(hex.stripHexPrefix(), radix: 16) ?? 0
@@ -85,7 +91,8 @@ actor RPCClient {
 
     func getMaxPriorityFeePerGas() async throws -> UInt64 {
         let hex = try await call(method: "eth_maxPriorityFeePerGas", params: [])
-        return UInt64(hex.stripHexPrefix(), radix: 16) ?? 1_000_000_000
+        let fee = UInt64(hex.stripHexPrefix(), radix: 16) ?? 0
+        return max(fee, 1_000_000)
     }
 
     func getCode(address: String) async throws -> String {

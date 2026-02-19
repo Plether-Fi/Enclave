@@ -57,10 +57,7 @@ struct UserOperation {
     // MARK: - UserOp Hash (for signing)
 
     func computeHash(entryPoint: String, chainId: UInt64) -> Data {
-        let typehash = Array("PackedUserOperation(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData)".utf8).sha3(.keccak256)
-
         var encoded = Data()
-        encoded.append(contentsOf: typehash)
         encoded.append(abiEncodeAddress(sender))
         encoded.append(abiEncodeUint256(nonce))
         encoded.append(abiEncodeBytes32(Data(initCode).sha3(.keccak256)))
@@ -73,7 +70,7 @@ struct UserOperation {
         let innerHash = Data(Array(encoded).sha3(.keccak256))
 
         var outer = Data()
-        outer.append(innerHash)
+        outer.append(abiEncodeBytes32(Array(innerHash)))
         outer.append(abiEncodeAddress(entryPoint))
         outer.append(abiEncodeUint256("0x" + String(chainId, radix: 16)))
 

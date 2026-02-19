@@ -171,6 +171,7 @@ class EnclaveEngine: @unchecked Sendable {
                 let address = computeCounterfactualAddress(pubKeyX: x, pubKeyY: y, salt: UInt64(index))
                 let wallet = Wallet(index: index, privateKey: key, address: address, pubKeyX: x, pubKeyY: y)
                 wallets.append(wallet)
+                log.notice("Wallet \(index, privacy: .public): \(address, privacy: .public) x=\(x, privacy: .public) y=\(y, privacy: .public)")
             } catch {
                 log.error("Failed to restore key \(index, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }

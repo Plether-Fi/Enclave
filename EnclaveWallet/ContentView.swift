@@ -47,6 +47,7 @@ struct ContentView: View {
     private func refreshBalances() {
         guard let wallet = EnclaveEngine.shared.currentWallet else { return }
         Task {
+            await EnclaveEngine.shared.refreshDeploymentStatus()
             do {
                 let eth = try await RPCClient.shared.getBalance(address: wallet.address)
                 let usdc = try await RPCClient.shared.getERC20Balance(
@@ -282,7 +283,7 @@ struct SendView: View {
 
                 var op = UserOperation(sender: wallet.address)
 
-                let nonce = try await RPCClient.shared.getTransactionCount(address: wallet.address)
+                let nonce = try await RPCClient.shared.getEntryPointNonce(sender: wallet.address)
                 op.nonce = "0x" + String(nonce, radix: 16)
 
                 if !wallet.isDeployed {
@@ -291,6 +292,7 @@ struct SendView: View {
                         pubKeyY: wallet.pubKeyY,
                         salt: UInt64(wallet.index)
                     )
+                    op.verificationGasLimit = 2_000_000
                 }
 
                 switch selectedToken {
@@ -310,11 +312,18 @@ struct SendView: View {
                     RPCClient.shared.getGasPrice(),
                     RPCClient.shared.getMaxPriorityFeePerGas()
                 )
-                op.maxFeePerGas = gasPrice
+                op.maxFeePerGas = gasPrice * 12 / 10
                 op.maxPriorityFeePerGas = priorityFee
+                op.signature = Data(repeating: 0, count: 64)
+
+                let dictForEstimate = op.toDict()
+                log.notice("Estimating gas for UserOp:")
+                for (k, v) in dictForEstimate.sorted(by: { $0.key < $1.key }) {
+                    log.notice("  \(k, privacy: .public): \(v, privacy: .public)")
+                }
 
                 let gasEstimate = try await BundlerClient.shared.estimateGas(
-                    op.toDict(), entryPoint: Config.entryPointAddress
+                    dictForEstimate, entryPoint: Config.entryPointAddress
                 )
                 op.preVerificationGas = UInt64(gasEstimate.preVerificationGas.stripHexPrefix(), radix: 16) ?? op.preVerificationGas
                 op.verificationGasLimit = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? op.verificationGasLimit
@@ -343,7 +352,9 @@ struct SendView: View {
 
                 let chainId = Config.activeNetwork.chainId
                 let opHash = op.computeHash(entryPoint: Config.entryPointAddress, chainId: chainId)
+                log.notice("UserOp hash: 0x\(opHash.map { String(format: "%02x", $0) }.joined(), privacy: .public)")
                 let signature = try EnclaveEngine.shared.signEVMHashRaw(payloadHash: opHash)
+                log.notice("Signature: 0x\(signature.map { String(format: "%02x", $0) }.joined(), privacy: .public)")
                 op.signature = signature
 
                 status = .submitting

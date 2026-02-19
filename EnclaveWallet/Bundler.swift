@@ -25,6 +25,16 @@ nonisolated struct GasEstimate: Sendable {
     let callGasLimit: String
 }
 
+nonisolated struct PaymasterResponse: Sendable {
+    let paymaster: String
+    let paymasterData: String
+    let paymasterVerificationGasLimit: String
+    let paymasterPostOpGasLimit: String
+    let preVerificationGas: String
+    let verificationGasLimit: String
+    let callGasLimit: String
+}
+
 actor BundlerClient {
     static let shared = BundlerClient()
 
@@ -48,17 +58,21 @@ actor BundlerClient {
         var request = URLRequest(url: Config.activeNetwork.bundlerURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let reqBody = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = reqBody
+        log.notice("Bundler request \(method, privacy: .public): \(String(data: reqBody, encoding: .utf8) ?? "nil", privacy: .public)")
 
         let (data, _) = try await session.data(for: request)
+        let responseStr = String(data: data, encoding: .utf8) ?? "nil"
+        log.notice("Bundler response: \(responseStr, privacy: .public)")
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            log.error("Bundler response not JSON: \(String(data: data, encoding: .utf8) ?? "nil", privacy: .public)")
+            log.error("Bundler response not JSON: \(responseStr, privacy: .public)")
             throw RPCError.invalidResponse
         }
         if let error = json["error"] as? [String: Any] {
             let msg = error["message"] as? String ?? "Unknown"
-            log.error("Bundler error: \(msg, privacy: .public)")
+            log.error("Bundler error (\(method, privacy: .public)): \(msg, privacy: .public)")
             throw RPCError.serverError(
                 code: error["code"] as? Int ?? -1,
                 message: msg
@@ -72,6 +86,7 @@ actor BundlerClient {
     }
 
     func sendUserOperation(_ op: [String: String], entryPoint: String) async throws -> String {
+        log.notice("Signature being sent: \(op["signature"] ?? "nil", privacy: .public)")
         let result = try await call(method: "eth_sendUserOperation", params: [op, entryPoint])
         guard let hash = result as? String else { throw RPCError.invalidResponse }
         log.notice("UserOp submitted: \(hash, privacy: .public)")
@@ -97,36 +112,30 @@ actor BundlerClient {
         return try JSONDecoder().decode(UserOperationReceipt.self, from: data)
     }
 
-    func getPaymasterData(_ op: [String: String], entryPoint: String) async throws -> String? {
-        guard let paymasterURL = Config.paymasterURL else { return nil }
+    func getPaymasterData(_ op: [String: String], entryPoint: String) async throws -> PaymasterResponse {
+        let dummySignature = "0x" + String(repeating: "00", count: 64)
+        let result = try await call(
+            method: "alchemy_requestGasAndPaymasterAndData",
+            params: [Config.gasPolicyId, NSNull(), entryPoint, dummySignature, op]
+        )
+        guard let dict = result as? [String: Any] else { throw RPCError.invalidResponse }
 
-        let id = nextId()
-        let body: [String: Any] = [
-            "jsonrpc": "2.0",
-            "method": "pm_sponsorUserOperation",
-            "params": [op, entryPoint],
-            "id": id
-        ]
+        let v07 = dict["entrypointV07Response"] as? [String: Any] ?? dict
 
-        var request = URLRequest(url: paymasterURL)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, _) = try await session.data(for: request)
-
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
+        guard let paymaster = v07["paymaster"] as? String,
+              let paymasterData = v07["paymasterData"] as? String else {
+            throw RPCError.serverError(code: -1, message: "Paymaster missing required fields")
         }
-        if let error = json["error"] as? [String: Any] {
-            log.notice("Paymaster declined: \(error["message"] as? String ?? "unknown", privacy: .public)")
-            return nil
-        }
-        guard let result = json["result"] as? [String: Any],
-              let paymasterAndData = result["paymasterAndData"] as? String else {
-            return nil
-        }
-        return paymasterAndData
+
+        return PaymasterResponse(
+            paymaster: paymaster,
+            paymasterData: paymasterData,
+            paymasterVerificationGasLimit: v07["paymasterVerificationGasLimit"] as? String ?? "0x0",
+            paymasterPostOpGasLimit: v07["paymasterPostOpGasLimit"] as? String ?? "0x0",
+            preVerificationGas: v07["preVerificationGas"] as? String ?? "0x0",
+            verificationGasLimit: v07["verificationGasLimit"] as? String ?? "0x0",
+            callGasLimit: v07["callGasLimit"] as? String ?? "0x0"
+        )
     }
 
     func waitForReceipt(hash: String, timeout: TimeInterval = 60) async throws -> UserOperationReceipt {

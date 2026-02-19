@@ -156,7 +156,7 @@ class ProviderBridge {
                     pubKeyY: wallet.pubKeyY,
                     salt: UInt64(wallet.index)
                 )
-                op.verificationGasLimit = 2_000_000
+                op.verificationGasLimit = 5_000_000
             }
 
             let innerCalldata = dataHex.stripHexPrefix().hexToData() ?? Data()

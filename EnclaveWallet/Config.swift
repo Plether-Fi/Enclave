@@ -30,7 +30,7 @@ nonisolated enum Network: String, CaseIterable, Sendable {
         case .arbitrumOne:
             URL(string: "https://arb-mainnet.g.alchemy.com/v2/\(Secrets.alchemyAPIKey)")!
         case .anvil:
-            URL(string: "http://127.0.0.1:8584")!
+            URL(string: "http://127.0.0.1:3000")!
         }
     }
 

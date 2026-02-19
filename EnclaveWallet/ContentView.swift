@@ -292,7 +292,7 @@ struct SendView: View {
                         pubKeyY: wallet.pubKeyY,
                         salt: UInt64(wallet.index)
                     )
-                    op.verificationGasLimit = 2_000_000
+                    op.verificationGasLimit = 5_000_000
                 }
 
                 switch selectedToken {
@@ -325,9 +325,9 @@ struct SendView: View {
                 let gasEstimate = try await BundlerClient.shared.estimateGas(
                     dictForEstimate, entryPoint: Config.entryPointAddress
                 )
-                op.preVerificationGas = UInt64(gasEstimate.preVerificationGas.stripHexPrefix(), radix: 16) ?? op.preVerificationGas
-                op.verificationGasLimit = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? op.verificationGasLimit
-                op.callGasLimit = UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? op.callGasLimit
+                op.preVerificationGas = max(op.preVerificationGas, UInt64(gasEstimate.preVerificationGas.stripHexPrefix(), radix: 16) ?? 0)
+                op.verificationGasLimit = max(op.verificationGasLimit, UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0)
+                op.callGasLimit = max(op.callGasLimit, UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? 0)
 
                 let totalGas = op.preVerificationGas + op.verificationGasLimit + op.callGasLimit
                 let gasCostWei = BigUInt(totalGas) * BigUInt(op.maxFeePerGas)

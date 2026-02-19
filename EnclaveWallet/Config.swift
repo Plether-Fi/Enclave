@@ -3,11 +3,12 @@ import Foundation
 nonisolated enum Network: String, CaseIterable, Sendable {
     case arbitrumSepolia
     case arbitrumOne
+    case anvil
 
     var chainId: UInt64 {
         switch self {
         case .arbitrumSepolia: 421614
-        case .arbitrumOne: 42161
+        case .arbitrumOne, .anvil: 42161
         }
     }
 
@@ -17,6 +18,8 @@ nonisolated enum Network: String, CaseIterable, Sendable {
             URL(string: "https://arb-sepolia.g.alchemy.com/v2/\(Secrets.alchemyAPIKey)")!
         case .arbitrumOne:
             URL(string: "https://arb-mainnet.g.alchemy.com/v2/\(Secrets.alchemyAPIKey)")!
+        case .anvil:
+            URL(string: "http://127.0.0.1:8584")!
         }
     }
 
@@ -26,6 +29,8 @@ nonisolated enum Network: String, CaseIterable, Sendable {
             URL(string: "https://arb-sepolia.g.alchemy.com/v2/\(Secrets.alchemyAPIKey)")!
         case .arbitrumOne:
             URL(string: "https://arb-mainnet.g.alchemy.com/v2/\(Secrets.alchemyAPIKey)")!
+        case .anvil:
+            URL(string: "http://127.0.0.1:8584")!
         }
     }
 
@@ -33,7 +38,7 @@ nonisolated enum Network: String, CaseIterable, Sendable {
         switch self {
         case .arbitrumSepolia:
             URL(string: "https://api-sepolia.arbiscan.io/api")!
-        case .arbitrumOne:
+        case .arbitrumOne, .anvil:
             URL(string: "https://api.arbiscan.io/api")!
         }
     }
@@ -41,7 +46,7 @@ nonisolated enum Network: String, CaseIterable, Sendable {
     var usdcAddress: String {
         switch self {
         case .arbitrumSepolia: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"
-        case .arbitrumOne: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+        case .arbitrumOne, .anvil: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
         }
     }
 
@@ -49,8 +54,11 @@ nonisolated enum Network: String, CaseIterable, Sendable {
         switch self {
         case .arbitrumSepolia: "Arbitrum Sepolia"
         case .arbitrumOne: "Arbitrum One"
+        case .anvil: "Anvil (Local)"
         }
     }
+
+    var isLocal: Bool { self == .anvil }
 }
 
 nonisolated enum Config {

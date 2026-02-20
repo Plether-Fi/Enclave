@@ -331,8 +331,7 @@ struct SendView: View {
                     estimateOp.toDict(), entryPoint: Config.entryPointAddress
                 )
                 op.preVerificationGas = UInt64(gasEstimate.preVerificationGas.stripHexPrefix(), radix: 16) ?? 0
-                let estVerify = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0
-                op.verificationGasLimit = estVerify * 3
+                op.verificationGasLimit = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0
                 op.callGasLimit = UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? 0
 
                 let totalGas = op.preVerificationGas + op.verificationGasLimit + op.callGasLimit

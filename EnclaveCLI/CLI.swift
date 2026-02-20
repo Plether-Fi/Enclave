@@ -231,7 +231,7 @@ struct CLI {
         let estVerify = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0
         let estCall = UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? 0
         op.preVerificationGas = estPreVer
-        op.verificationGasLimit = estVerify * 3
+        op.verificationGasLimit = estVerify
         op.callGasLimit = estCall
 
         let totalGas = op.preVerificationGas + op.verificationGasLimit + op.callGasLimit

@@ -68,7 +68,7 @@ nonisolated enum Config {
 
     static let gasPolicyId = "ff3e2c3f-3d8e-4046-959e-06fb0324cf2c"
 
-    static var activeNetwork: Network = .arbitrumSepolia
+    nonisolated(unsafe) static var activeNetwork: Network = .arbitrumSepolia
 
     // EnclaveWallet creation bytecode (from `forge inspect EnclaveWallet bytecode`)
     // Used for offline CREATE2 address computation

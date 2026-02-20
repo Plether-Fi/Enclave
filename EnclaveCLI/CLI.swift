@@ -90,7 +90,6 @@ struct CLI {
             op.initCode = UserOperation.buildInitCode(
                 pubKeyX: wallet.pubKeyX, pubKeyY: wallet.pubKeyY, salt: UInt64(wallet.index)
             )
-            op.verificationGasLimit = 5_000_000
         }
 
         switch tokenStr {
@@ -133,7 +132,6 @@ struct CLI {
         op.initCode = UserOperation.buildInitCode(
             pubKeyX: wallet.pubKeyX, pubKeyY: wallet.pubKeyY, salt: UInt64(wallet.index)
         )
-        op.verificationGasLimit = 5_000_000
         op.callData = Data()
 
         try await estimateSignSubmit(&op, engine: engine, wallet: wallet, deployed: false)
@@ -210,7 +208,7 @@ struct CLI {
     // MARK: - Shared Send Flow
 
     private static func estimateSignSubmit(
-        _ op: inout UserOperation, engine: CLIEngine, wallet: CLIWallet, deployed: Bool
+        _ op: inout UserOperation, engine: CLIEngine, wallet: CLIWallet, deployed: Bool = true
     ) async throws {
         let (gasPrice, priorityFee) = try await (
             RPCClient.shared.getGasPrice(),
@@ -233,7 +231,7 @@ struct CLI {
         let estVerify = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0
         let estCall = UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? 0
         op.preVerificationGas = estPreVer
-        op.verificationGasLimit = deployed ? estVerify : max(op.verificationGasLimit, estVerify)
+        op.verificationGasLimit = estVerify * 3
         op.callGasLimit = estCall
 
         let totalGas = op.preVerificationGas + op.verificationGasLimit + op.callGasLimit

@@ -299,7 +299,6 @@ struct SendView: View {
                         pubKeyY: wallet.pubKeyY,
                         salt: UInt64(wallet.index)
                     )
-                    op.verificationGasLimit = 5_000_000
                 }
 
                 switch selectedToken {
@@ -332,7 +331,8 @@ struct SendView: View {
                     estimateOp.toDict(), entryPoint: Config.entryPointAddress
                 )
                 op.preVerificationGas = UInt64(gasEstimate.preVerificationGas.stripHexPrefix(), radix: 16) ?? 0
-                op.verificationGasLimit = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0
+                let estVerify = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0
+                op.verificationGasLimit = estVerify * 3
                 op.callGasLimit = UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? 0
 
                 let totalGas = op.preVerificationGas + op.verificationGasLimit + op.callGasLimit

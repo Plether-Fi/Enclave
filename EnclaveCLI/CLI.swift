@@ -249,9 +249,23 @@ struct CLI {
         op.signature = try await engine.signHash(opHash)
 
         print("Submitting to bundler...")
-        let userOpHash = try await BundlerClient.shared.sendUserOperation(
-            op.toDict(), entryPoint: Config.entryPointAddress
-        )
+        var userOpHash: String
+        do {
+            userOpHash = try await BundlerClient.shared.sendUserOperation(
+                op.toDict(), entryPoint: Config.entryPointAddress
+            )
+        } catch RPCError.replacementUnderpriced(let curMaxFee, let curPriorityFee) {
+            print("Replacing stuck op with higher gas...")
+            op.maxFeePerGas = curMaxFee * 13 / 10
+            op.maxPriorityFeePerGas = curPriorityFee * 13 / 10
+
+            let retryHash = op.computeHash(entryPoint: Config.entryPointAddress, chainId: chainId)
+            op.signature = try await engine.signHash(retryHash)
+
+            userOpHash = try await BundlerClient.shared.sendUserOperation(
+                op.toDict(), entryPoint: Config.entryPointAddress
+            )
+        }
         print("UserOp hash: \(userOpHash)")
 
         print("Waiting for receipt...")

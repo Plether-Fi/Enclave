@@ -366,9 +366,23 @@ struct SendView: View {
 
                 status = .submitting
 
-                let userOpHash = try await BundlerClient.shared.sendUserOperation(
-                    op.toDict(), entryPoint: Config.entryPointAddress
-                )
+                var userOpHash: String
+                do {
+                    userOpHash = try await BundlerClient.shared.sendUserOperation(
+                        op.toDict(), entryPoint: Config.entryPointAddress
+                    )
+                } catch RPCError.replacementUnderpriced(let curMaxFee, let curPriorityFee) {
+                    log.notice("Replacement underpriced, bumping gas to replace stuck op")
+                    op.maxFeePerGas = curMaxFee * 13 / 10
+                    op.maxPriorityFeePerGas = curPriorityFee * 13 / 10
+
+                    let retryHash = op.computeHash(entryPoint: Config.entryPointAddress, chainId: chainId)
+                    op.signature = try EnclaveEngine.shared.signEVMHashRaw(payloadHash: retryHash)
+
+                    userOpHash = try await BundlerClient.shared.sendUserOperation(
+                        op.toDict(), entryPoint: Config.entryPointAddress
+                    )
+                }
 
                 status = .waiting
 

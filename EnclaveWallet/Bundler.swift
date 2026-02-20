@@ -73,6 +73,17 @@ actor BundlerClient {
         if let error = json["error"] as? [String: Any] {
             let msg = error["message"] as? String ?? "Unknown"
             log.error("Bundler error (\(method, privacy: .public)): \(msg, privacy: .public)")
+
+            if msg.contains("replacement underpriced"),
+               let data = error["data"] as? [String: Any],
+               let maxFeeHex = data["currentMaxFee"] as? String,
+               let priorityHex = data["currentMaxPriorityFee"] as? String {
+                throw RPCError.replacementUnderpriced(
+                    currentMaxFee: UInt64(maxFeeHex.stripHexPrefix(), radix: 16) ?? 0,
+                    currentMaxPriorityFee: UInt64(priorityHex.stripHexPrefix(), radix: 16) ?? 0
+                )
+            }
+
             throw RPCError.serverError(
                 code: error["code"] as? Int ?? -1,
                 message: msg

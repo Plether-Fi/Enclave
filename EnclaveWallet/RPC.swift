@@ -7,6 +7,7 @@ private let log = Logger(subsystem: "com.plether.EnclaveWallet", category: "RPC"
 enum RPCError: Error {
     case invalidResponse
     case serverError(code: Int, message: String)
+    case replacementUnderpriced(currentMaxFee: UInt64, currentMaxPriorityFee: UInt64)
 }
 
 actor RPCClient {

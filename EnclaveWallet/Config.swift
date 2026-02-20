@@ -34,13 +34,8 @@ nonisolated enum Network: String, CaseIterable, Sendable {
         }
     }
 
-    var blockExplorerAPI: URL {
-        switch self {
-        case .arbitrumSepolia:
-            URL(string: "https://api-sepolia.arbiscan.io/api")!
-        case .arbitrumOne, .anvil:
-            URL(string: "https://api.arbiscan.io/api")!
-        }
+    var blockExplorerAPI: String {
+        "https://api.etherscan.io/v2/api?chainid=\(chainId)"
     }
 
     var usdcAddress: String {

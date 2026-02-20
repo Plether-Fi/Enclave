@@ -221,12 +221,20 @@ struct CLI {
         op.signature = Data(repeating: 0, count: 64)
 
         print("Estimating gas...")
+        var estimateOp = op
+        estimateOp.preVerificationGas = 0
+        estimateOp.verificationGasLimit = 0
+        estimateOp.callGasLimit = 0
+
         let gasEstimate = try await BundlerClient.shared.estimateGas(
-            op.toDict(), entryPoint: Config.entryPointAddress
+            estimateOp.toDict(), entryPoint: Config.entryPointAddress
         )
-        op.preVerificationGas = max(op.preVerificationGas, UInt64(gasEstimate.preVerificationGas.stripHexPrefix(), radix: 16) ?? 0)
-        op.verificationGasLimit = max(op.verificationGasLimit, UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0)
-        op.callGasLimit = max(op.callGasLimit, UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? 0)
+        let estPreVer = UInt64(gasEstimate.preVerificationGas.stripHexPrefix(), radix: 16) ?? 0
+        let estVerify = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0
+        let estCall = UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? 0
+        op.preVerificationGas = estPreVer
+        op.verificationGasLimit = deployed ? estVerify : max(op.verificationGasLimit, estVerify)
+        op.callGasLimit = estCall
 
         let totalGas = op.preVerificationGas + op.verificationGasLimit + op.callGasLimit
         let gasCostWei = BigUInt(totalGas) * BigUInt(op.maxFeePerGas)

@@ -104,6 +104,11 @@ actor RPCClient {
         return UInt64(hex.stripHexPrefix(), radix: 16) ?? 0
     }
 
+    func sendTransaction(from: String, to: String, value: String) async throws -> String {
+        let txObj: [String: String] = ["from": from, "to": to, "value": value]
+        return try await call(method: "eth_sendTransaction", params: [txObj])
+    }
+
     func estimateGas(to: String, from: String? = nil, data: String? = nil, value: String? = nil) async throws -> UInt64 {
         var callObj: [String: String] = ["to": to]
         if let from { callObj["from"] = from }

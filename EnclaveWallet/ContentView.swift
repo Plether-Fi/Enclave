@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var showSend = false
     @State private var showReceive = false
     @State private var selectedApp = "kitchen_sink"
+    @State private var activityRefreshId = UUID()
 
     private let apps: [(name: String, resource: String)] = [
         ("Kitchen Sink", "kitchen_sink"),
@@ -27,10 +28,14 @@ struct ContentView: View {
             }
             .frame(minWidth: 300)
             ActivityWebView()
+                .id(activityRefreshId)
                 .frame(minWidth: 220, idealWidth: 280, maxWidth: 360)
         }
         .sheet(isPresented: $showSend) {
-            SendView(onComplete: { refreshBalances() })
+            SendView(onComplete: {
+                refreshBalances()
+                activityRefreshId = UUID()
+            })
         }
         .sheet(isPresented: $showReceive) {
             ReceiveView()
@@ -42,6 +47,7 @@ struct ContentView: View {
         wallets = EnclaveEngine.shared.wallets
         selectedAddress = EnclaveEngine.shared.currentWallet?.displayAddress ?? "No Wallet"
         refreshBalances()
+        activityRefreshId = UUID()
     }
 
     private func refreshBalances() {
@@ -139,6 +145,7 @@ struct ContentView: View {
                     Button(network.displayName) {
                         Config.activeNetwork = network
                         refreshBalances()
+                        activityRefreshId = UUID()
                     }
                 }
             } label: {
@@ -316,18 +323,17 @@ struct SendView: View {
                 op.maxPriorityFeePerGas = priorityFee
                 op.signature = Data(repeating: 0, count: 64)
 
-                let dictForEstimate = op.toDict()
-                log.notice("Estimating gas for UserOp:")
-                for (k, v) in dictForEstimate.sorted(by: { $0.key < $1.key }) {
-                    log.notice("  \(k, privacy: .public): \(v, privacy: .public)")
-                }
+                var estimateOp = op
+                estimateOp.preVerificationGas = 0
+                estimateOp.verificationGasLimit = 0
+                estimateOp.callGasLimit = 0
 
                 let gasEstimate = try await BundlerClient.shared.estimateGas(
-                    dictForEstimate, entryPoint: Config.entryPointAddress
+                    estimateOp.toDict(), entryPoint: Config.entryPointAddress
                 )
-                op.preVerificationGas = max(op.preVerificationGas, UInt64(gasEstimate.preVerificationGas.stripHexPrefix(), radix: 16) ?? 0)
-                op.verificationGasLimit = max(op.verificationGasLimit, UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0)
-                op.callGasLimit = max(op.callGasLimit, UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? 0)
+                op.preVerificationGas = UInt64(gasEstimate.preVerificationGas.stripHexPrefix(), radix: 16) ?? 0
+                op.verificationGasLimit = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0
+                op.callGasLimit = UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? 0
 
                 let totalGas = op.preVerificationGas + op.verificationGasLimit + op.callGasLimit
                 let gasCostWei = BigUInt(totalGas) * BigUInt(op.maxFeePerGas)
@@ -344,7 +350,8 @@ struct SendView: View {
     }
 
     private func confirmAndSign() {
-        guard var op = pendingOp else { return }
+        guard var op = pendingOp,
+              let wallet = EnclaveEngine.shared.currentWallet else { return }
 
         Task {
             do {
@@ -371,6 +378,13 @@ struct SendView: View {
                 if receipt.success {
                     status = .success
                     pendingOp = nil
+                    await TransactionHistoryService.shared.recordSend(
+                        from: wallet.address,
+                        to: recipient,
+                        value: amount,
+                        tokenSymbol: selectedToken.rawValue,
+                        txHash: txHash
+                    )
                     onComplete()
                 } else {
                     status = .error("Transaction reverted")

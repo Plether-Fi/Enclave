@@ -129,6 +129,7 @@ struct ActivityWebView: NSViewRepresentable {
                         "incoming": tx.isIncoming,
                         "address": tx.displayAddress,
                         "value": tx.value,
+                        "symbol": tx.tokenSymbol,
                         "time": timeStr,
                     ]
                 }

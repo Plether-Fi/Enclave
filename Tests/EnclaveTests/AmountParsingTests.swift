@@ -38,6 +38,18 @@ import BigInt
         #expect(CLI.parseETHToWei("abc") == BigUInt(0))
     }
 
+    @Test func ethInvalidFractionReturnsZero() {
+        #expect(CLI.parseETHToWei("1.xyz") == BigUInt(0))
+    }
+
+    @Test func ethTypoLetterOReturnsZero() {
+        #expect(CLI.parseETHToWei("1.O5") == BigUInt(0))
+    }
+
+    @Test func ethLeadingDot() {
+        #expect(CLI.parseETHToWei(".5") == BigUInt(5) * BigUInt(10).power(17))
+    }
+
     // MARK: - parseUSDCToBase
 
     @Test func usdcWholeNumber() {
@@ -59,5 +71,9 @@ import BigInt
 
     @Test func usdcZero() {
         #expect(CLI.parseUSDCToBase("0") == BigUInt(0))
+    }
+
+    @Test func usdcInvalidFractionReturnsZero() {
+        #expect(CLI.parseUSDCToBase("1.ab") == BigUInt(0))
     }
 }

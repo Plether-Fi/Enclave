@@ -263,23 +263,29 @@ struct CLI {
 
     static func parseETHToWei(_ str: String) -> BigUInt {
         guard let dotIndex = str.firstIndex(of: ".") else {
-            return (BigUInt(str) ?? 0) * BigUInt(10).power(18)
+            guard let whole = BigUInt(str) else { return 0 }
+            return whole * BigUInt(10).power(18)
         }
-        let whole = String(str[str.startIndex..<dotIndex])
-        var fraction = String(str[str.index(after: dotIndex)...])
-        if fraction.count > 18 { fraction = String(fraction.prefix(18)) }
-        fraction = fraction + String(repeating: "0", count: 18 - fraction.count)
-        return (BigUInt(whole) ?? 0) * BigUInt(10).power(18) + (BigUInt(fraction) ?? 0)
+        let wholeStr = String(str[str.startIndex..<dotIndex])
+        var fractionStr = String(str[str.index(after: dotIndex)...])
+        if fractionStr.count > 18 { fractionStr = String(fractionStr.prefix(18)) }
+        fractionStr = fractionStr + String(repeating: "0", count: 18 - fractionStr.count)
+        guard let whole = wholeStr.isEmpty ? 0 : BigUInt(wholeStr),
+              let fraction = BigUInt(fractionStr) else { return 0 }
+        return whole * BigUInt(10).power(18) + fraction
     }
 
     static func parseUSDCToBase(_ str: String) -> BigUInt {
         guard let dotIndex = str.firstIndex(of: ".") else {
-            return (BigUInt(str) ?? 0) * BigUInt(10).power(6)
+            guard let whole = BigUInt(str) else { return 0 }
+            return whole * BigUInt(10).power(6)
         }
-        let whole = String(str[str.startIndex..<dotIndex])
-        var fraction = String(str[str.index(after: dotIndex)...])
-        if fraction.count > 6 { fraction = String(fraction.prefix(6)) }
-        fraction = fraction + String(repeating: "0", count: 6 - fraction.count)
-        return (BigUInt(whole) ?? 0) * BigUInt(10).power(6) + (BigUInt(fraction) ?? 0)
+        let wholeStr = String(str[str.startIndex..<dotIndex])
+        var fractionStr = String(str[str.index(after: dotIndex)...])
+        if fractionStr.count > 6 { fractionStr = String(fractionStr.prefix(6)) }
+        fractionStr = fractionStr + String(repeating: "0", count: 6 - fractionStr.count)
+        guard let whole = wholeStr.isEmpty ? 0 : BigUInt(wholeStr),
+              let fraction = BigUInt(fractionStr) else { return 0 }
+        return whole * BigUInt(10).power(6) + fraction
     }
 }

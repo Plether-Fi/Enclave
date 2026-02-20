@@ -152,14 +152,14 @@ actor CLIEngine {
         }
     }
 
-    nonisolated private static func extractCoordinates(from publicKey: P256.Signing.PublicKey) -> (x: String, y: String) {
+    nonisolated static func extractCoordinates(from publicKey: P256.Signing.PublicKey) -> (x: String, y: String) {
         let raw = publicKey.rawRepresentation
         let xHex = raw.prefix(32).map { String(format: "%02x", $0) }.joined()
         let yHex = raw.suffix(32).map { String(format: "%02x", $0) }.joined()
         return ("0x" + xHex, "0x" + yHex)
     }
 
-    nonisolated private static func computeCounterfactualAddress(pubKeyX: String, pubKeyY: String, salt: UInt64) -> String {
+    nonisolated static func computeCounterfactualAddress(pubKeyX: String, pubKeyY: String, salt: UInt64) -> String {
         let factoryHex = Config.factoryAddress.stripHexPrefix()
         guard let factoryBytes = factoryHex.hexToData(), factoryBytes.count == 20 else {
             return "0x" + String(repeating: "0", count: 40)

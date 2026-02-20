@@ -18,5 +18,14 @@ let package = Package(
                 .enableExperimentalFeature("DefaultIsolation=MainActor"),
             ]
         ),
+        .testTarget(
+            name: "EnclaveTests",
+            dependencies: ["EnclaveCLI"],
+            path: "Tests/EnclaveTests",
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+                .enableExperimentalFeature("DefaultIsolation=MainActor"),
+            ]
+        ),
     ]
 )

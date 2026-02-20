@@ -261,7 +261,7 @@ struct CLI {
 
     // MARK: - Amount Parsing
 
-    private static func parseETHToWei(_ str: String) -> BigUInt {
+    static func parseETHToWei(_ str: String) -> BigUInt {
         guard let dotIndex = str.firstIndex(of: ".") else {
             return (BigUInt(str) ?? 0) * BigUInt(10).power(18)
         }
@@ -272,7 +272,7 @@ struct CLI {
         return (BigUInt(whole) ?? 0) * BigUInt(10).power(18) + (BigUInt(fraction) ?? 0)
     }
 
-    private static func parseUSDCToBase(_ str: String) -> BigUInt {
+    static func parseUSDCToBase(_ str: String) -> BigUInt {
         guard let dotIndex = str.firstIndex(of: ".") else {
             return (BigUInt(str) ?? 0) * BigUInt(10).power(6)
         }

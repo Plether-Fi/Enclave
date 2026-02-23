@@ -1,4 +1,5 @@
 import SwiftUI
+import WalletConnectSign
 import BigInt
 import os
 
@@ -11,12 +12,13 @@ struct ContentView: View {
     @State private var usdcBalance: String = "..."
     @State private var showSend = false
     @State private var showReceive = false
-    @State private var selectedApp = "kitchen_sink"
+    @State private var urlInput = "https://app.uniswap.org"
+    @State private var activeURL = "https://app.uniswap.org"
+    @State private var currentURL = ""
     @State private var activityRefreshId = UUID()
+    @State private var showSessions = false
 
-    private let apps: [(name: String, resource: String)] = [
-        ("Kitchen Sink", "kitchen_sink"),
-    ]
+    @ObservedObject private var wcService = WalletConnectService.shared
 
     var body: some View {
         HSplitView {
@@ -24,7 +26,7 @@ struct ContentView: View {
                 toolbar
                 balanceBar
                 Divider()
-                WalledGardenWebView(page: selectedApp)
+                WalledGardenWebView(urlString: activeURL, currentURL: $currentURL)
             }
             .frame(minWidth: 300)
             ActivityWebView()
@@ -39,6 +41,32 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showReceive) {
             ReceiveView()
+        }
+        .sheet(item: $wcService.pendingProposal) { proposal in
+            SessionProposalView(
+                proposal: proposal,
+                onApprove: { wcService.approveProposal() },
+                onReject: { wcService.rejectProposal() }
+            )
+        }
+        .sheet(item: $wcService.pendingRequest) { request in
+            RequestApprovalView(
+                request: request,
+                onApprove: {
+                    if request.method == "eth_sendTransaction" {
+                        wcService.approveSendTransaction()
+                    } else {
+                        wcService.approveSignRequest()
+                    }
+                },
+                onReject: { wcService.rejectRequest() }
+            )
+        }
+        .sheet(isPresented: $showSessions) {
+            SessionsListView(
+                sessions: wcService.sessions,
+                onDisconnect: { topic in wcService.disconnect(topic: topic) }
+            )
         }
         .task { refreshBalances() }
     }
@@ -71,7 +99,7 @@ struct ContentView: View {
     }
 
     private var toolbar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Menu {
                 ForEach(wallets, id: \.index) { wallet in
                     Button(wallet.displayAddress) {
@@ -108,19 +136,32 @@ struct ContentView: View {
 
             Spacer()
 
-            Menu {
-                ForEach(apps, id: \.resource) { app in
-                    Button(app.name) { selectedApp = app.resource }
-                }
+            TextField("URL", text: $urlInput)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.caption, design: .monospaced))
+                .frame(maxWidth: 300)
+                .onSubmit { activeURL = urlInput }
+
+            Button {
+                activeURL = urlInput
             } label: {
-                let displayName = apps.first(where: { $0.resource == selectedApp })?.name ?? selectedApp
-                Text(displayName)
-                    .font(.system(.caption))
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.black.opacity(0.1))
-                    .clipShape(Capsule())
+                Image(systemName: "arrow.right.circle.fill")
+            }
+
+            Button {
+                pasteWCURI()
+            } label: {
+                Label("WC", systemImage: "qrcode")
+            }
+            .help("Paste WalletConnect URI from clipboard")
+
+            if !wcService.sessions.isEmpty {
+                Button {
+                    showSessions = true
+                } label: {
+                    Label("\(wcService.sessions.count)", systemImage: "link.circle")
+                }
+                .help("Active WalletConnect sessions")
             }
         }
         .buttonStyle(.borderedProminent)
@@ -160,6 +201,177 @@ struct ContentView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+
+    private func pasteWCURI() {
+        guard let str = NSPasteboard.general.string(forType: .string),
+              str.hasPrefix("wc:") else {
+            log.notice("Clipboard does not contain a WC URI")
+            return
+        }
+        WalletConnectService.shared.pair(uriString: str)
+    }
+}
+
+// MARK: - Session Proposal View
+
+extension Session.Proposal: @retroactive Identifiable {}
+
+struct SessionProposalView: View {
+    let proposal: Session.Proposal
+    let onApprove: () -> Void
+    let onReject: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Session Proposal").font(.title2).bold()
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("dApp:").foregroundColor(.secondary)
+                    Text(proposal.proposer.name).bold()
+                }
+                HStack {
+                    Text("URL:").foregroundColor(.secondary)
+                    Text(proposal.proposer.url)
+                        .font(.system(.body, design: .monospaced))
+                }
+
+                if !proposal.requiredNamespaces.isEmpty {
+                    Text("Requested chains:").foregroundColor(.secondary)
+                    ForEach(Array(proposal.requiredNamespaces.keys), id: \.self) { key in
+                        if let ns = proposal.requiredNamespaces[key] {
+                            Text("  \(key): \(ns.methods.joined(separator: ", "))")
+                                .font(.caption)
+                        }
+                    }
+                }
+            }
+            .padding()
+            .background(Color.secondary.opacity(0.08))
+            .cornerRadius(8)
+
+            HStack {
+                Button("Reject") {
+                    onReject()
+                    dismiss()
+                }
+                Spacer()
+                Button("Approve") {
+                    onApprove()
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+    }
+}
+
+// MARK: - Request Approval View
+
+extension Request: @retroactive Identifiable {}
+
+struct RequestApprovalView: View {
+    let request: Request
+    let onApprove: () -> Void
+    let onReject: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Sign Request").font(.title2).bold()
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Method:").foregroundColor(.secondary)
+                    Text(request.method)
+                        .font(.system(.body, design: .monospaced))
+                }
+                HStack {
+                    Text("Chain:").foregroundColor(.secondary)
+                    Text(request.chainId.absoluteString)
+                }
+
+                if request.method == "personal_sign" {
+                    if let params = try? request.params.get([String].self),
+                       let hex = params.first,
+                       let data = hex.stripHexPrefix().hexToData(),
+                       let message = String(data: data, encoding: .utf8) {
+                        Text("Message:").foregroundColor(.secondary)
+                        Text(message)
+                            .font(.system(.caption, design: .monospaced))
+                            .lineLimit(10)
+                            .padding(8)
+                            .background(Color.secondary.opacity(0.05))
+                            .cornerRadius(6)
+                    }
+                }
+            }
+            .padding()
+            .background(Color.secondary.opacity(0.08))
+            .cornerRadius(8)
+
+            HStack {
+                Button("Reject") {
+                    onReject()
+                    dismiss()
+                }
+                Spacer()
+                Button("Approve & Sign") {
+                    onApprove()
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+    }
+}
+
+// MARK: - Sessions List View
+
+struct SessionsListView: View {
+    let sessions: [Session]
+    let onDisconnect: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Active Sessions").font(.title2).bold()
+
+            if sessions.isEmpty {
+                Text("No active sessions")
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(sessions, id: \.topic) { session in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(session.peer.name).bold()
+                            Text(session.peer.url)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Button("Disconnect") {
+                            onDisconnect(session.topic)
+                        }
+                        .foregroundColor(.red)
+                    }
+                    .padding(8)
+                    .background(Color.secondary.opacity(0.05))
+                    .cornerRadius(6)
+                }
+            }
+
+            Button("Done") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding(24)
+        .frame(width: 420)
     }
 }
 

@@ -1,0 +1,4 @@
+[submodule "vendor/reown-swift"]
+	path = vendor/reown-swift
+	url = https://github.com/Stanley/reown-swift.git
+	branch = fix/macos-link-envelopes

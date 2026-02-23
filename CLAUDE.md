@@ -28,8 +28,9 @@
 - `ContentView.swift` — Main UI: wallet selector, balance display, send/receive sheets, tx preview
 - `CalldataDecoder.swift` — Decodes execute/executeBatch calldata into human-readable actions
 - `AppPermissions.swift` — Per-dApp permission model with session expiry
-- `ProviderBridge.swift` — EIP-1193-like request/response bridge for dApps in WebView
+- `WalletConnectService.swift` — WalletConnect v2 integration: pair, approve sessions, handle requests
+- `NativeWebSocket.swift` — URLSessionWebSocketTask adapter for WC relay (no Starscream dep)
 - `TransactionHistory.swift` — Tx history from Arbiscan API
-- `WalledGardenWebView.swift` — WebView with injected provider script, delegates to ProviderBridge
+- `WalledGardenWebView.swift` — WebView loading real URLs, intercepts `wc:` URIs for WC pairing
 - `contracts/src/EnclaveWallet.sol` — ERC-4337 wallet: P-256 sig verification, EIP-1271, daily spending limits
 - `contracts/src/EnclaveWalletFactory.sol` — CREATE2 factory for wallet deployment

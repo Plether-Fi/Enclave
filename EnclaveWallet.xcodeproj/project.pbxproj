@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		F66FE4C12F431A88006DFAF2 /* BigInt in Frameworks */ = {isa = PBXBuildFile; productRef = F6B1G1NT0000000000000002 /* BigInt */; };
 		F66FE4C22F431A88006DFAF2 /* CryptoSwift in Frameworks */ = {isa = PBXBuildFile; productRef = F6CRYPT000000000000000002 /* CryptoSwift */; };
+		F6RWWK00000000000000002 /* WalletConnect in Frameworks */ = {isa = PBXBuildFile; productRef = F6RWWK00000000000000003 /* WalletConnect */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 			files = (
 				F66FE4C22F431A88006DFAF2 /* CryptoSwift in Frameworks */,
 				F66FE4C12F431A88006DFAF2 /* BigInt in Frameworks */,
+				F6RWWK00000000000000002 /* WalletConnect in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -74,6 +76,7 @@
 			packageProductDependencies = (
 				F6B1G1NT0000000000000002 /* BigInt */,
 				F6CRYPT000000000000000002 /* CryptoSwift */,
+				F6RWWK00000000000000003 /* WalletConnect */,
 			);
 			productName = EnclaveWallet;
 			productReference = F62E0BBB2F42278400354D17 /* EnclaveWallet.app */;
@@ -106,6 +109,7 @@
 			packageReferences = (
 				F6B1G1NT0000000000000001 /* XCRemoteSwiftPackageReference "BigInt" */,
 				F6CRYPT000000000000000001 /* XCRemoteSwiftPackageReference "CryptoSwift" */,
+				F6RWWK00000000000000001 /* XCLocalSwiftPackageReference "vendor/reown-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F62E0BBC2F42278400354D17 /* Products */;
@@ -362,6 +366,13 @@
 		};
 /* End XCRemoteSwiftPackageReference section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		F6RWWK00000000000000001 /* XCLocalSwiftPackageReference "vendor/reown-swift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = vendor/reown-swift;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		F6B1G1NT0000000000000002 /* BigInt */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -372,6 +383,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F6CRYPT000000000000000001 /* XCRemoteSwiftPackageReference "CryptoSwift" */;
 			productName = CryptoSwift;
+		};
+		F6RWWK00000000000000003 /* WalletConnect */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WalletConnect;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -5,92 +5,79 @@ import os
 private let log = Logger(subsystem: "com.plether.EnclaveWallet", category: "WebView")
 
 struct WalledGardenWebView: NSViewRepresentable {
-    var page: String
+    var urlString: String
+    @Binding var currentURL: String
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        config.preferences.javaScriptCanOpenWindowsAutomatically = false
-
-        let userContentController = WKUserContentController()
-        userContentController.add(context.coordinator, name: "enclaveAPI")
-
-        let providerScript = WKUserScript(
-            source: ProviderBridge.injectedScript,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: true
-        )
-        userContentController.addUserScript(providerScript)
-        config.userContentController = userContentController
+        config.preferences.javaScriptCanOpenWindowsAutomatically = true
+        config.defaultWebpagePreferences.allowsContentJavaScript = true
 
         let webView = WKWebView(frame: .zero, configuration: config)
+        webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
         context.coordinator.webView = webView
-        loadPage(page, into: webView)
+        loadURL(urlString, into: webView)
         return webView
     }
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
-        if context.coordinator.currentPage != page {
-            context.coordinator.currentPage = page
-            loadPage(page, into: nsView)
+        if context.coordinator.lastLoadedURL != urlString {
+            context.coordinator.lastLoadedURL = urlString
+            loadURL(urlString, into: nsView)
         }
     }
 
-    private func loadPage(_ page: String, into webView: WKWebView) {
-        if let url = Bundle.main.url(forResource: page, withExtension: "html") {
-            webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-        }
-    }
-    func makeCoordinator() -> Coordinator { Coordinator(page: page) }
+    private func loadURL(_ string: String, into webView: WKWebView) {
+        var urlStr = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !urlStr.contains("://") { urlStr = "https://" + urlStr }
 
-    class Coordinator: NSObject, WKScriptMessageHandler {
-        var currentPage: String
+        guard let url = URL(string: urlStr) else { return }
+        webView.load(URLRequest(url: url))
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(currentURL: $currentURL) }
+
+    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+        var lastLoadedURL = ""
         weak var webView: WKWebView?
-        private var bridge: ProviderBridge?
+        @Binding var currentURL: String
 
-        init(page: String) {
-            self.currentPage = page
+        init(currentURL: Binding<String>) {
+            _currentURL = currentURL
         }
 
-        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard let body = message.body as? [String: Any] else { return }
-
-            // V2 protocol: {id, method, params}
-            if let request = BridgeRequest(from: body) {
-                if bridge == nil {
-                    bridge = ProviderBridge(webView: message.webView, appId: currentPage)
-                }
-                Task {
-                    if let wv = message.webView {
-                        bridge?.updateWebView(wv)
-                    }
-                    await bridge?.handle(request)
-                }
-                return
-            }
-
-            // V1 backward compat: {action, hash}
-            if let action = body["action"] as? String, action == "request_signature" {
-                guard let hashHex = body["hash"] as? String,
-                      let hashData = hashHex.stripHexPrefix().hexToData() else {
-                    log.error("Invalid hash payload")
-                    DispatchQueue.main.async { message.webView?.evaluateJavaScript("window.enclaveError('Invalid hash')", completionHandler: nil) }
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if let url = navigationAction.request.url {
+                if url.scheme == "wc" {
+                    let uriString = url.absoluteString
+                    log.notice("Intercepted WC URI: \(uriString, privacy: .public)")
+                    WalletConnectService.shared.pair(uriString: uriString)
+                    decisionHandler(.cancel)
                     return
                 }
-
-                do {
-                    let signature = try EnclaveEngine.shared.signEVMHash(payloadHash: hashData)
-                    let js = "window.enclaveCallback('\(signature)');"
-                    DispatchQueue.main.async { message.webView?.evaluateJavaScript(js, completionHandler: nil) }
-                } catch {
-                    log.notice("User canceled Touch ID")
-                    let js = "window.enclaveError('User canceled authentication');"
-                    DispatchQueue.main.async {
-                        message.webView?.evaluateJavaScript(js) { _, err in
-                            if let err { log.error("JS error callback failed: \(err.localizedDescription, privacy: .public)") }
-                        }
-                    }
-                }
             }
+            decisionHandler(.allow)
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            if let url = webView.url?.absoluteString {
+                DispatchQueue.main.async { self.currentURL = url }
+            }
+        }
+
+        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                      for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+            if let url = navigationAction.request.url {
+                if url.scheme == "wc" {
+                    log.notice("Intercepted WC URI from window.open: \(url.absoluteString, privacy: .public)")
+                    WalletConnectService.shared.pair(uriString: url.absoluteString)
+                    return nil
+                }
+                webView.load(URLRequest(url: url))
+            }
+            return nil
         }
     }
 }

@@ -54,6 +54,8 @@ nonisolated enum Network: String, CaseIterable, Sendable {
     }
 
     var isLocal: Bool { self == .anvil }
+
+    var caip2: String { "eip155:\(chainId)" }
 }
 
 nonisolated enum Config {

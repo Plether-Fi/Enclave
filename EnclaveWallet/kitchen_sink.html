@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, system-ui; padding: 24px; background: #fafafa; color: #111; }
+h2 { font-size: 18px; margin-bottom: 16px; }
+h3 { font-size: 13px; color: #666; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.card { background: white; border-radius: 10px; padding: 16px; border: 1px solid #e5e5e5; margin-bottom: 12px; }
+button {
+    padding: 8px 16px; border-radius: 8px; border: 1px solid #ddd;
+    background: #111; color: white; font-size: 13px; cursor: pointer;
+    margin: 4px 4px 4px 0;
+}
+button:hover { background: #333; }
+button:active { background: #555; }
+.result {
+    margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 6px;
+    font-family: monospace; font-size: 12px; word-break: break-all;
+    white-space: pre-wrap; max-height: 200px; overflow-y: auto;
+}
+.result.error { background: #fef2f2; color: #dc2626; }
+.result.success { background: #f0fdf4; color: #16a34a; }
+#status { font-size: 13px; color: #999; margin-bottom: 12px; }
+input {
+    padding: 8px; border-radius: 6px; border: 1px solid #ddd;
+    font-family: monospace; font-size: 12px; width: 100%; margin: 4px 0;
+}
+</style>
+</head>
+<body>
+
+<h2>Kitchen Sink</h2>
+<div id="status">Not connected</div>
+
+<div class="card">
+    <h3>Connection</h3>
+    <button onclick="connectWallet()">Connect Wallet</button>
+    <button onclick="getChainId()">Chain ID</button>
+    <button onclick="getBlockNumber()">Block Number</button>
+    <div id="conn-result" class="result" style="display:none"></div>
+</div>
+
+<div class="card">
+    <h3>Balance</h3>
+    <button onclick="getBalance()">Get ETH Balance</button>
+    <div id="bal-result" class="result" style="display:none"></div>
+</div>
+
+<div class="card">
+    <h3>Sign Message</h3>
+    <input id="sign-msg" type="text" value="Hello from Kitchen Sink!" placeholder="Message to sign">
+    <button onclick="signMessage()">Personal Sign</button>
+    <div id="sign-result" class="result" style="display:none"></div>
+</div>
+
+<div class="card">
+    <h3>Send Transaction</h3>
+    <input id="send-to" type="text" placeholder="Recipient (0x...)">
+    <input id="send-value" type="text" value="0" placeholder="Value in wei (hex, e.g. 0x0)">
+    <button onclick="sendTx()">Send</button>
+    <div id="send-result" class="result" style="display:none"></div>
+</div>
+
+<script>
+let pending = {};
+let nextId = 1;
+let account = null;
+
+function request(method, params) {
+    return new Promise((resolve, reject) => {
+        const id = nextId++;
+        pending[id] = { resolve, reject };
+        window.webkit.messageHandlers.enclave.postMessage(JSON.stringify({ id, method, params }));
+    });
+}
+
+function _enclaveResponse(id, result, error) {
+    const p = pending[id];
+    if (!p) return;
+    if (error) p.reject(new Error(error));
+    else p.resolve(result);
+    delete pending[id];
+}
+
+function show(elId, text, isError) {
+    const el = document.getElementById(elId);
+    el.style.display = 'block';
+    el.textContent = typeof text === 'object' ? JSON.stringify(text, null, 2) : text;
+    el.className = 'result ' + (isError ? 'error' : 'success');
+}
+
+async function connectWallet() {
+    try {
+        const accounts = await request('eth_requestAccounts', []);
+        account = accounts[0];
+        document.getElementById('status').textContent = 'Connected: ' + account;
+        show('conn-result', 'Accounts: ' + JSON.stringify(accounts));
+    } catch (e) { show('conn-result', e.message, true); }
+}
+
+async function getChainId() {
+    try {
+        const id = await request('eth_chainId', []);
+        show('conn-result', 'Chain ID: ' + id + ' (' + parseInt(id, 16) + ')');
+    } catch (e) { show('conn-result', e.message, true); }
+}
+
+async function getBlockNumber() {
+    try {
+        const block = await request('eth_blockNumber', []);
+        show('conn-result', 'Block: ' + block + ' (' + parseInt(block, 16) + ')');
+    } catch (e) { show('conn-result', e.message, true); }
+}
+
+async function getBalance() {
+    try {
+        if (!account) { show('bal-result', 'Connect wallet first', true); return; }
+        const bal = await request('eth_getBalance', [account, 'latest']);
+        const wei = BigInt(bal);
+        const eth = Number(wei) / 1e18;
+        show('bal-result', bal + '\n' + eth.toFixed(6) + ' ETH');
+    } catch (e) { show('bal-result', e.message, true); }
+}
+
+async function signMessage() {
+    try {
+        if (!account) { show('sign-result', 'Connect wallet first', true); return; }
+        const msg = document.getElementById('sign-msg').value;
+        const hex = '0x' + Array.from(new TextEncoder().encode(msg)).map(b => b.toString(16).padStart(2, '0')).join('');
+        const sig = await request('personal_sign', [hex, account]);
+        show('sign-result', sig);
+    } catch (e) { show('sign-result', e.message, true); }
+}
+
+async function sendTx() {
+    try {
+        if (!account) { show('send-result', 'Connect wallet first', true); return; }
+        const to = document.getElementById('send-to').value;
+        const value = document.getElementById('send-value').value || '0x0';
+        const hash = await request('eth_sendTransaction', [{ from: account, to, value }]);
+        show('send-result', 'Tx hash: ' + hash);
+    } catch (e) { show('send-result', e.message, true); }
+}
+</script>
+</body>
+</html>

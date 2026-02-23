@@ -12,9 +12,10 @@ struct ContentView: View {
     @State private var usdcBalance: String = "..."
     @State private var showSend = false
     @State private var showReceive = false
-    @State private var urlInput = "https://app.uniswap.org"
-    @State private var activeURL = "https://app.uniswap.org"
+    @State private var urlInput = ""
+    @State private var activeURL = "kitchen_sink"
     @State private var currentURL = ""
+    @State private var showCustomURL = false
     @State private var activityRefreshId = UUID()
     @State private var showSessions = false
 
@@ -136,16 +137,40 @@ struct ContentView: View {
 
             Spacer()
 
-            TextField("URL", text: $urlInput)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(.caption, design: .monospaced))
-                .frame(maxWidth: 300)
-                .onSubmit { activeURL = urlInput }
-
-            Button {
-                activeURL = urlInput
+            Menu {
+                Button("Kitchen Sink") {
+                    showCustomURL = false
+                    activeURL = "kitchen_sink"
+                }
+                Button("Uniswap") {
+                    showCustomURL = false
+                    activeURL = "https://app.uniswap.org"
+                }
+                Button("Aave") {
+                    showCustomURL = false
+                    activeURL = "https://app.aave.com"
+                }
+                Divider()
+                Button("Enter URL...") {
+                    showCustomURL = true
+                }
             } label: {
-                Image(systemName: "arrow.right.circle.fill")
+                Label(appLabel, systemImage: "globe")
+                    .font(.system(.caption))
+            }
+
+            if showCustomURL {
+                TextField("https://...", text: $urlInput)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.caption, design: .monospaced))
+                    .frame(maxWidth: 250)
+                    .onSubmit { activeURL = urlInput }
+
+                Button {
+                    activeURL = urlInput
+                } label: {
+                    Image(systemName: "arrow.right.circle.fill")
+                }
             }
 
             Button {
@@ -201,6 +226,15 @@ struct ContentView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+
+    private var appLabel: String {
+        switch activeURL {
+        case "kitchen_sink": "Kitchen Sink"
+        case "https://app.uniswap.org": "Uniswap"
+        case "https://app.aave.com": "Aave"
+        default: "dApp"
+        }
     }
 
     private func pasteWCURI() {

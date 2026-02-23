@@ -1,5 +1,7 @@
 import SwiftUI
 import WebKit
+import CryptoKit
+import BigInt
 import os
 
 private let log = Logger(subsystem: "com.plether.EnclaveWallet", category: "WebView")
@@ -12,6 +14,7 @@ struct WalledGardenWebView: NSViewRepresentable {
         let config = WKWebViewConfiguration()
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
         config.defaultWebpagePreferences.allowsContentJavaScript = true
+        config.userContentController.add(context.coordinator, name: "enclave")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -29,6 +32,13 @@ struct WalledGardenWebView: NSViewRepresentable {
     }
 
     private func loadURL(_ string: String, into webView: WKWebView) {
+        if string == "kitchen_sink" {
+            if let url = Bundle.main.url(forResource: "kitchen_sink", withExtension: "html") {
+                webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+            }
+            return
+        }
+
         var urlStr = string.trimmingCharacters(in: .whitespacesAndNewlines)
         if !urlStr.contains("://") { urlStr = "https://" + urlStr }
 
@@ -38,7 +48,7 @@ struct WalledGardenWebView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(currentURL: $currentURL) }
 
-    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         var lastLoadedURL = ""
         weak var webView: WKWebView?
         @Binding var currentURL: String
@@ -46,6 +56,166 @@ struct WalledGardenWebView: NSViewRepresentable {
         init(currentURL: Binding<String>) {
             _currentURL = currentURL
         }
+
+        // MARK: - WKScriptMessageHandler
+
+        func userContentController(_ userContentController: WKUserContentController,
+                                   didReceive message: WKScriptMessage) {
+            guard let body = message.body as? String,
+                  let data = body.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = json["id"] as? Int,
+                  let method = json["method"] as? String else { return }
+
+            let params = json["params"] as? [Any] ?? []
+            log.notice("Bridge request #\(id, privacy: .public): \(method, privacy: .public)")
+
+            Task { @MainActor in
+                do {
+                    let result = try await self.handleRequest(method: method, params: params)
+                    self.respond(id: id, result: result)
+                } catch {
+                    self.respond(id: id, error: error.localizedDescription)
+                }
+            }
+        }
+
+        private func handleRequest(method: String, params: [Any]) async throws -> Any {
+            guard let wallet = EnclaveEngine.shared.currentWallet else {
+                throw BridgeError.noWallet
+            }
+
+            switch method {
+            case "eth_accounts", "eth_requestAccounts":
+                return [wallet.address]
+
+            case "eth_chainId":
+                return "0x" + String(Config.activeNetwork.chainId, radix: 16)
+
+            case "eth_getBalance":
+                let address = (params.first as? String) ?? wallet.address
+                let balance = try await RPCClient.shared.getBalance(address: address)
+                return "0x" + String(balance.value, radix: 16)
+
+            case "eth_blockNumber":
+                let block = try await RPCClient.shared.getBlockNumber()
+                return "0x" + String(block, radix: 16)
+
+            case "personal_sign":
+                guard let hexMsg = params.first as? String else { throw BridgeError.invalidParams }
+                let msgData = hexMsg.stripHexPrefix().hexToData() ?? Data()
+                let prefix = "\u{19}Ethereum Signed Message:\n\(msgData.count)"
+                var prefixed = Data(prefix.utf8)
+                prefixed.append(msgData)
+                let hash = Data(SHA256.hash(data: prefixed))
+                return try EnclaveEngine.shared.signEVMHash(payloadHash: hash)
+
+            case "eth_sendTransaction":
+                guard let txObj = params.first as? [String: Any] else { throw BridgeError.invalidParams }
+                return try await sendUserOperation(wallet: wallet, tx: txObj)
+
+            default:
+                throw BridgeError.unsupportedMethod(method)
+            }
+        }
+
+        private func sendUserOperation(wallet: Wallet, tx: [String: Any]) async throws -> String {
+            let to = tx["to"] as? String ?? ""
+            let valueHex = tx["value"] as? String ?? "0x0"
+            let data = tx["data"] as? String ?? "0x"
+            let weiValue = BigUInt(valueHex.stripHexPrefix(), radix: 16) ?? 0
+
+            var op = UserOperation(sender: wallet.address)
+            let nonce = try await RPCClient.shared.getEntryPointNonce(sender: wallet.address)
+            op.nonce = "0x" + String(nonce, radix: 16)
+
+            if !wallet.isDeployed {
+                op.initCode = UserOperation.buildInitCode(
+                    pubKeyX: wallet.pubKeyX,
+                    pubKeyY: wallet.pubKeyY,
+                    salt: UInt64(wallet.index)
+                )
+            }
+
+            if data != "0x" && !data.isEmpty {
+                let calldata = data.stripHexPrefix().hexToData() ?? Data()
+                op.callData = UserOperation.buildExecuteCallData(to: to, value: weiValue, data: calldata)
+            } else {
+                op.callData = UserOperation.buildETHTransfer(to: to, weiAmount: weiValue)
+            }
+
+            let (gasPrice, priorityFee) = try await (
+                RPCClient.shared.getGasPrice(),
+                RPCClient.shared.getMaxPriorityFeePerGas()
+            )
+            op.maxFeePerGas = gasPrice * 12 / 10
+            op.maxPriorityFeePerGas = priorityFee
+            op.signature = Data(repeating: 0, count: 64)
+
+            var estimateOp = op
+            estimateOp.preVerificationGas = 0
+            estimateOp.verificationGasLimit = 0
+            estimateOp.callGasLimit = 0
+
+            let gasEstimate = try await BundlerClient.shared.estimateGas(
+                estimateOp.toDict(), entryPoint: Config.entryPointAddress
+            )
+            op.preVerificationGas = UInt64(gasEstimate.preVerificationGas.stripHexPrefix(), radix: 16) ?? 0
+            op.verificationGasLimit = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0
+            op.callGasLimit = UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? 0
+
+            let chainId = Config.activeNetwork.chainId
+            let opHash = op.computeHash(entryPoint: Config.entryPointAddress, chainId: chainId)
+            op.signature = try EnclaveEngine.shared.signEVMHashRaw(payloadHash: opHash)
+
+            var userOpHash: String
+            do {
+                userOpHash = try await BundlerClient.shared.sendUserOperation(
+                    op.toDict(), entryPoint: Config.entryPointAddress
+                )
+            } catch RPCError.replacementUnderpriced(let curMaxFee, let curPriorityFee) {
+                op.maxFeePerGas = curMaxFee * 13 / 10
+                op.maxPriorityFeePerGas = curPriorityFee * 13 / 10
+                let retryHash = op.computeHash(entryPoint: Config.entryPointAddress, chainId: chainId)
+                op.signature = try EnclaveEngine.shared.signEVMHashRaw(payloadHash: retryHash)
+                userOpHash = try await BundlerClient.shared.sendUserOperation(
+                    op.toDict(), entryPoint: Config.entryPointAddress
+                )
+            }
+
+            let receipt = try await BundlerClient.shared.waitForReceipt(hash: userOpHash)
+            guard receipt.success else { throw BridgeError.txReverted }
+            return receipt.receipt?.transactionHash ?? userOpHash
+        }
+
+        private func respond(id: Int, result: Any) {
+            let jsonStr: String
+            if let str = result as? String {
+                let escaped = str.replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "\"", with: "\\\"")
+                jsonStr = "\"\(escaped)\""
+            } else if let arr = result as? [String] {
+                let items = arr.map { "\"\($0)\"" }.joined(separator: ",")
+                jsonStr = "[\(items)]"
+            } else if let data = try? JSONSerialization.data(withJSONObject: result),
+                      let str = String(data: data, encoding: .utf8) {
+                jsonStr = str
+            } else {
+                respond(id: id, error: "Failed to serialize result")
+                return
+            }
+            let js = "_enclaveResponse(\(id), \(jsonStr), null)"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        private func respond(id: Int, error: String) {
+            let escaped = error.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+            let js = "_enclaveResponse(\(id), null, \"\(escaped)\")"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        // MARK: - WKNavigationDelegate
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                       decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -78,6 +248,22 @@ struct WalledGardenWebView: NSViewRepresentable {
                 webView.load(URLRequest(url: url))
             }
             return nil
+        }
+    }
+}
+
+private enum BridgeError: LocalizedError {
+    case noWallet
+    case invalidParams
+    case unsupportedMethod(String)
+    case txReverted
+
+    var errorDescription: String? {
+        switch self {
+        case .noWallet: "No wallet selected"
+        case .invalidParams: "Invalid parameters"
+        case .unsupportedMethod(let m): "Unsupported method: \(m)"
+        case .txReverted: "Transaction reverted"
         }
     }
 }

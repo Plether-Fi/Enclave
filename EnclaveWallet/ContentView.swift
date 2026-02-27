@@ -540,7 +540,7 @@ struct SessionProposalView: View {
         return (chains, Array(methods), Array(events))
     }
 
-    private static let knownChains: [String: String] = [
+    static let knownChains: [String: String] = [
         "eip155:1": "Ethereum",
         "eip155:10": "Optimism",
         "eip155:56": "BNB Chain",
@@ -638,7 +638,10 @@ struct RequestApprovalView: View {
     let request: Request
     let onApprove: () -> Void
     let onReject: () -> Void
+    @ObservedObject private var wcService = WalletConnectService.shared
     @Environment(\.dismiss) private var dismiss
+
+    private static let knownChains = SessionProposalView.knownChains
 
     var body: some View {
         VStack(spacing: 16) {
@@ -652,43 +655,152 @@ struct RequestApprovalView: View {
                 }
                 HStack {
                     Text("Chain:").foregroundColor(.secondary)
-                    Text(request.chainId.absoluteString)
+                    let caip2 = request.chainId.absoluteString
+                    Text(Self.knownChains[caip2] ?? caip2)
                 }
 
                 if request.method == "personal_sign" {
-                    if let params = try? request.params.get([String].self),
-                       let hex = params.first,
-                       let data = hex.stripHexPrefix().hexToData(),
-                       let message = String(data: data, encoding: .utf8) {
-                        Text("Message:").foregroundColor(.secondary)
-                        Text(message)
-                            .font(.system(.caption, design: .monospaced))
-                            .lineLimit(10)
-                            .padding(8)
-                            .background(Color.secondary.opacity(0.05))
-                            .cornerRadius(6)
-                    }
+                    personalSignDetails
+                } else if request.method == "eth_signTypedData_v4" {
+                    typedDataDetails
+                } else if request.method == "eth_sendTransaction" {
+                    sendTransactionDetails
                 }
             }
             .padding()
             .background(Color.secondary.opacity(0.08))
             .cornerRadius(8)
 
-            HStack {
-                Button("Reject") {
-                    onReject()
-                    dismiss()
+            switch wcService.signingStatus {
+            case .signing:
+                ProgressView("Waiting for authentication...")
+            case .submitting:
+                ProgressView("Submitting to bundler...")
+            case .waiting:
+                ProgressView("Waiting for confirmation...")
+            case .success:
+                Label("Signed successfully", systemImage: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+            case .error(let msg):
+                VStack(spacing: 8) {
+                    Label(msg, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                    Button("Dismiss") {
+                        wcService.signingStatus = .idle
+                        dismiss()
+                    }
                 }
-                Spacer()
-                Button("Approve & Sign") {
-                    onApprove()
-                    dismiss()
+            case .idle:
+                HStack {
+                    Button("Reject") {
+                        onReject()
+                        dismiss()
+                    }
+                    Spacer()
+                    Button("Approve & Sign") {
+                        onApprove()
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
             }
         }
         .padding(24)
         .frame(width: 420)
+        .onChange(of: wcService.signingStatus) { _, status in
+            if status == .success {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    wcService.signingStatus = .idle
+                    dismiss()
+                }
+            }
+        }
+        .interactiveDismissDisabled(wcService.signingStatus != .idle)
+        .onDisappear {
+            wcService.signingStatus = .idle
+        }
+    }
+
+    @ViewBuilder
+    private var personalSignDetails: some View {
+        if let params = try? request.params.get([String].self),
+           let hex = params.first,
+           let data = hex.stripHexPrefix().hexToData(),
+           let message = String(data: data, encoding: .utf8) {
+            Text("Message:").foregroundColor(.secondary)
+            Text(message)
+                .font(.system(.caption, design: .monospaced))
+                .lineLimit(10)
+                .padding(8)
+                .background(Color.secondary.opacity(0.05))
+                .cornerRadius(6)
+        }
+    }
+
+    @ViewBuilder
+    private var typedDataDetails: some View {
+        if let params = try? request.params.get([String].self),
+           params.count >= 2,
+           let jsonData = params[1].data(using: .utf8),
+           let typed = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+            if let domain = typed["domain"] as? [String: Any],
+               let name = domain["name"] as? String {
+                HStack {
+                    Text("App:").foregroundColor(.secondary)
+                    Text(name)
+                }
+            }
+            if let primaryType = typed["primaryType"] as? String {
+                HStack {
+                    Text("Action:").foregroundColor(.secondary)
+                    Text(primaryType)
+                }
+            }
+            if let message = typed["message"] as? [String: Any] {
+                let preview = message.keys.sorted().prefix(6).map { key in
+                    let val = message[key]
+                    let display = (val as? String) ?? String(describing: val ?? "")
+                    let truncated = display.count > 40 ? String(display.prefix(37)) + "..." : display
+                    return "\(key): \(truncated)"
+                }.joined(separator: "\n")
+                Text(preview)
+                    .font(.system(.caption, design: .monospaced))
+                    .lineLimit(8)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.secondary.opacity(0.05))
+                    .cornerRadius(6)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sendTransactionDetails: some View {
+        if let txDicts = try? request.params.get([[String: String]].self),
+           let tx = txDicts.first {
+            if let to = tx["to"] {
+                HStack {
+                    Text("To:").foregroundColor(.secondary)
+                    Text(String(to.prefix(6)) + "..." + String(to.suffix(4)))
+                        .font(.system(.body, design: .monospaced))
+                }
+            }
+            if let valueHex = tx["value"],
+               let wei = BigUInt(valueHex.stripHexPrefix(), radix: 16), wei > 0 {
+                HStack {
+                    Text("Value:").foregroundColor(.secondary)
+                    Text(Wei(bigUInt: wei).ethFormatted + " ETH")
+                        .font(.system(.body, design: .monospaced))
+                }
+            }
+            if let data = tx["data"], data != "0x", data.count > 2 {
+                let selector = String(data.stripHexPrefix().prefix(8))
+                HStack {
+                    Text("Data:").foregroundColor(.secondary)
+                    Text("0x\(selector)... (\(data.stripHexPrefix().count / 2) bytes)")
+                        .font(.system(.caption, design: .monospaced))
+                }
+            }
+        }
     }
 }
 

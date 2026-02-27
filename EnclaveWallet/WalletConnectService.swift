@@ -22,10 +22,16 @@ struct EnclaveCryptoProvider: CryptoProvider {
 class WalletConnectService: ObservableObject {
     static let shared = WalletConnectService()
 
+    enum SigningStatus: Equatable {
+        case idle, signing, submitting, waiting, success
+        case error(String)
+    }
+
     @Published var sessions: [Session] = []
     @Published var pendingProposal: Session.Proposal?
     @Published var pendingRequest: Request?
     @Published var pendingRequestParams: [String: Any]?
+    @Published var signingStatus: SigningStatus = .idle
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -197,6 +203,8 @@ class WalletConnectService: ObservableObject {
 
         Task {
             do {
+                await MainActor.run { signingStatus = .signing }
+
                 let params = try request.params.get([String].self)
                 let signature: String
 
@@ -230,11 +238,16 @@ class WalletConnectService: ObservableObject {
                     response: .response(AnyCodable(signature))
                 )
 
-                await MainActor.run { pendingRequest = nil }
+                await MainActor.run {
+                    signingStatus = .success
+                    pendingRequest = nil
+                }
             } catch {
                 log.error("Sign failed: \(error.localizedDescription, privacy: .public)")
                 respondError(request: request, code: 4001, message: "User rejected signing")
-                await MainActor.run { pendingRequest = nil }
+                await MainActor.run {
+                    signingStatus = .error(error.localizedDescription)
+                }
             }
         }
     }
@@ -245,6 +258,8 @@ class WalletConnectService: ObservableObject {
 
         Task {
             do {
+                await MainActor.run { signingStatus = .signing }
+
                 let txDicts = try request.params.get([[String: String]].self)
                 guard let txDict = txDicts.first else { throw WCServiceError.invalidParams }
 
@@ -290,9 +305,13 @@ class WalletConnectService: ObservableObject {
                 let signature = try EnclaveEngine.shared.signEVMHashRaw(payloadHash: opHash)
                 op.signature = signature
 
+                await MainActor.run { signingStatus = .submitting }
+
                 let userOpHash = try await BundlerClient.shared.sendUserOperation(
                     op.toDict(), entryPoint: Config.entryPointAddress
                 )
+
+                await MainActor.run { signingStatus = .waiting }
 
                 let receipt = try await BundlerClient.shared.waitForReceipt(hash: userOpHash)
                 let txHash = receipt.receipt?.transactionHash ?? userOpHash
@@ -303,12 +322,17 @@ class WalletConnectService: ObservableObject {
                     response: .response(AnyCodable(txHash))
                 )
 
-                await MainActor.run { pendingRequest = nil }
+                await MainActor.run {
+                    signingStatus = .success
+                    pendingRequest = nil
+                }
                 log.notice("Tx submitted: \(txHash, privacy: .public)")
             } catch {
                 log.error("Send tx failed: \(error.localizedDescription, privacy: .public)")
                 respondError(request: request, code: -32000, message: error.localizedDescription)
-                await MainActor.run { pendingRequest = nil }
+                await MainActor.run {
+                    signingStatus = .error(error.localizedDescription)
+                }
             }
         }
     }
@@ -317,6 +341,7 @@ class WalletConnectService: ObservableObject {
         guard let request = pendingRequest else { return }
         respondError(request: request, code: 4001, message: "User rejected")
         pendingRequest = nil
+        signingStatus = .idle
     }
 
     // MARK: - Chain Switching

@@ -212,9 +212,15 @@ struct ContentView: View {
         .background(Color.black.opacity(0.03))
     }
 
+    private func isConnected(url: String) -> Bool {
+        guard let host = URL(string: url)?.host else { return false }
+        return wcService.sessions.contains { $0.peer.url.contains(host) }
+    }
+
     private func sidebarButton(_ icon: String, url: String) -> some View {
         let isActive = activeURL == url
         let isCached = isActive || visitedURLs.contains(url)
+        let connected = isConnected(url: url)
         return Button {
             visitedURLs.insert(activeURL)
             activeURL = url
@@ -233,9 +239,17 @@ struct ContentView: View {
         .buttonStyle(.plain)
         .overlay(alignment: .leading) {
             RoundedRectangle(cornerRadius: 1.5)
-                .fill(isCached ? Color.accentColor : Color.clear)
+                .fill(isCached ? Color.secondary : Color.clear)
                 .frame(width: 3, height: 16)
                 .offset(x: -6)
+        }
+        .overlay(alignment: .topTrailing) {
+            if connected {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+                    .offset(x: 2, y: -2)
+            }
         }
     }
 

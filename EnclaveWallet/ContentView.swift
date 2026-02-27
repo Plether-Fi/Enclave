@@ -6,6 +6,21 @@ import os
 
 private let log = Logger(subsystem: "com.plether.EnclaveWallet", category: "UI")
 
+nonisolated struct AppEntry: Codable, Identifiable, Sendable {
+    var id: String { url }
+    let url: String
+
+    var icon: String {
+        URL(string: url).flatMap(\.host)?.split(separator: ".").dropLast().last.map { String($0.prefix(1)).uppercased() } ?? "?"
+    }
+}
+
+private let defaultApps = [
+    AppEntry(url: "https://app.plether.com"),
+    AppEntry(url: "https://app.uniswap.org"),
+    AppEntry(url: "https://app.aave.com"),
+]
+
 struct ContentView: View {
     @State private var showSend = false
     @State private var showReceive = false
@@ -16,6 +31,15 @@ struct ContentView: View {
     @State private var showSessions = false
     @State private var lastPasteboardCount = NSPasteboard.general.changeCount
     @State private var webViewCoordinator: WalledGardenWebView.Coordinator?
+    @State private var apps: [AppEntry] = {
+        guard let data = UserDefaults.standard.data(forKey: "savedApps"),
+              let saved = try? JSONDecoder().decode([AppEntry].self, from: data) else {
+            return defaultApps
+        }
+        return saved
+    }()
+    @State private var showAddApp = false
+    @State private var newAppAddress = ""
 
     @ObservedObject private var wcService = WalletConnectService.shared
 
@@ -99,6 +123,20 @@ struct ContentView: View {
         refreshBalances()
         notifyActivityWebView()
         activityRefreshId = UUID()
+    }
+
+    private func saveApps() {
+        if let data = try? JSONEncoder().encode(apps) {
+            UserDefaults.standard.set(data, forKey: "savedApps")
+        }
+    }
+
+    private func removeApp(_ app: AppEntry) {
+        apps.removeAll { $0.url == app.url }
+        saveApps()
+        webViewCoordinator?.webViews.removeValue(forKey: app.url)
+        visitedURLs.remove(app.url)
+        if activeURL == app.url { activeURL = "kitchen_sink" }
     }
 
     private func refreshBalances() {
@@ -202,10 +240,21 @@ struct ContentView: View {
     private var appSidebar: some View {
         VStack(spacing: 8) {
             sidebarButton("house.fill", url: "kitchen_sink")
-            sidebarButton("P", url: "https://app.plether.com")
-            sidebarButton("U", url: "https://app.uniswap.org")
-            sidebarButton("A", url: "https://app.aave.com")
+            ForEach(apps) { app in
+                sidebarButton(app.icon, url: app.url)
+                    .contextMenu {
+                        Button("Remove", role: .destructive) { removeApp(app) }
+                    }
+            }
             Spacer()
+            Button { showAddApp = true } label: {
+                Image(systemName: "plus")
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showAddApp) {
+                addAppPopover
+            }
         }
         .padding(.vertical, 8)
         .frame(width: 44)
@@ -215,6 +264,50 @@ struct ContentView: View {
     private func isConnected(url: String) -> Bool {
         guard let host = URL(string: url)?.host else { return false }
         return wcService.sessions.contains { $0.peer.url.contains(host) }
+    }
+
+    private var addAppPopover: some View {
+        VStack(spacing: 12) {
+            Text("Add App").font(.headline)
+            HStack(spacing: 4) {
+                Text("https://")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.secondary)
+                TextField("app.example.com", text: $newAppAddress)
+                    .font(.system(.body, design: .monospaced))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 200)
+                    .onSubmit { addApp() }
+            }
+            HStack {
+                Button("Cancel") {
+                    newAppAddress = ""
+                    showAddApp = false
+                }
+                Spacer()
+                Button("Add") { addApp() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(newAppAddress.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(16)
+    }
+
+    private func addApp() {
+        let address = newAppAddress.trimmingCharacters(in: .whitespaces)
+        guard !address.isEmpty else { return }
+        let url = "https://" + address
+        guard !apps.contains(where: { $0.url == url }) else {
+            newAppAddress = ""
+            showAddApp = false
+            return
+        }
+        apps.append(AppEntry(url: url))
+        saveApps()
+        newAppAddress = ""
+        showAddApp = false
+        visitedURLs.insert(activeURL)
+        activeURL = url
     }
 
     private func sidebarButton(_ icon: String, url: String) -> some View {

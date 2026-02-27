@@ -170,7 +170,6 @@ enum SessionKeySigner {
                 pubKeyX: wallet.pubKeyX, pubKeyY: wallet.pubKeyY,
                 salt: UInt64(wallet.index)
             )
-            op.verificationGasLimit = 5_000_000
         }
 
         op.callData = UserOperation.buildAddSessionKeyCallData(
@@ -181,16 +180,21 @@ enum SessionKeySigner {
             RPCClient.shared.getGasPrice(),
             RPCClient.shared.getMaxPriorityFeePerGas()
         )
-        op.maxFeePerGas = gasPrice * 12 / 10
-        op.maxPriorityFeePerGas = priorityFee
+        op.maxFeePerGas = gasPrice * 15 / 10
+        op.maxPriorityFeePerGas = priorityFee * 15 / 10
         op.signature = Data(repeating: 0, count: 64)
 
+        var estimateOp = op
+        estimateOp.preVerificationGas = 0
+        estimateOp.verificationGasLimit = 0
+        estimateOp.callGasLimit = 0
+
         let gasEstimate = try await BundlerClient.shared.estimateGas(
-            op.toDict(), entryPoint: Config.entryPointAddress
+            estimateOp.toDict(), entryPoint: Config.entryPointAddress
         )
-        op.preVerificationGas = UInt64(gasEstimate.preVerificationGas.stripHexPrefix(), radix: 16) ?? op.preVerificationGas
-        op.verificationGasLimit = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? op.verificationGasLimit
-        op.callGasLimit = UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? op.callGasLimit
+        op.preVerificationGas = UInt64(gasEstimate.preVerificationGas.stripHexPrefix(), radix: 16) ?? 0
+        op.verificationGasLimit = UInt64(gasEstimate.verificationGasLimit.stripHexPrefix(), radix: 16) ?? 0
+        op.callGasLimit = UInt64(gasEstimate.callGasLimit.stripHexPrefix(), radix: 16) ?? 0
 
         let chainId = Config.activeNetwork.chainId
         let opHash = op.computeHash(entryPoint: Config.entryPointAddress, chainId: chainId)

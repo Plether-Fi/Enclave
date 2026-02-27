@@ -52,6 +52,37 @@ actor RPCClient {
         return result
     }
 
+    func rawCall(method: String, params: [Any]) async throws -> Any {
+        let id = nextId()
+        let body: [String: Any] = [
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+            "id": id
+        ]
+
+        var request = URLRequest(url: Config.activeNetwork.rpcURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, _) = try await session.data(for: request)
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw RPCError.invalidResponse
+        }
+        if let error = json["error"] as? [String: Any] {
+            throw RPCError.serverError(
+                code: error["code"] as? Int ?? -1,
+                message: error["message"] as? String ?? "Unknown"
+            )
+        }
+        guard let result = json["result"] else {
+            throw RPCError.invalidResponse
+        }
+        return result
+    }
+
     func getBalance(address: String) async throws -> Wei {
         let hex = try await call(method: "eth_getBalance", params: [address, "latest"])
         return Wei(hex: hex)

@@ -188,7 +188,7 @@ class WalletConnectService: ObservableObject {
              "eth_getTransactionCount", "eth_getTransactionReceipt":
             handleReadOnlyRPC(request)
         default:
-            respondError(request: request, code: 4200, message: "Unsupported method: \(request.method)")
+            proxyToNode(request)
         }
     }
 
@@ -447,6 +447,31 @@ class WalletConnectService: ObservableObject {
                     response: .response(result)
                 )
             } catch {
+                respondError(request: request, code: -32000, message: error.localizedDescription)
+            }
+        }
+    }
+
+    // MARK: - Generic RPC Proxy
+
+    private func proxyToNode(_ request: Request) {
+        Task {
+            do {
+                let paramsData = try JSONEncoder().encode(request.params)
+                let params = (try JSONSerialization.jsonObject(with: paramsData) as? [Any]) ?? []
+
+                let result = try await RPCClient.shared.rawCall(method: request.method, params: params)
+
+                let resultData = try JSONSerialization.data(withJSONObject: result)
+                let codable = try JSONDecoder().decode(AnyCodable.self, from: resultData)
+
+                try await Sign.instance.respond(
+                    topic: request.topic,
+                    requestId: request.id,
+                    response: .response(codable)
+                )
+            } catch {
+                log.notice("RPC proxy failed for \(request.method, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 respondError(request: request, code: -32000, message: error.localizedDescription)
             }
         }

@@ -464,7 +464,7 @@ struct SessionProposalView: View {
                     Text("Methods").font(.subheadline).bold()
                     FlowLayout(spacing: 6) {
                         ForEach(allNamespaces.methods.sorted(), id: \.self) { method in
-                            let supported = Self.supportedMethods.contains(method)
+                            let supported = !Self.unsupportedMethods.contains(method)
                             Text(method)
                                 .font(.system(.caption, design: .monospaced))
                                 .foregroundColor(supported ? .primary : .secondary)
@@ -576,13 +576,8 @@ struct SessionProposalView: View {
         Network.allCases.map(\.caip2)
     )
 
-    private static let supportedMethods: Set<String> = [
-        "personal_sign", "eth_signTypedData_v4", "eth_sendTransaction",
-        "eth_accounts", "eth_requestAccounts", "eth_chainId",
-        "eth_getBalance", "eth_call", "eth_blockNumber",
-        "eth_estimateGas", "eth_gasPrice", "eth_getCode",
-        "eth_getTransactionCount", "eth_getTransactionReceipt",
-        "net_version", "wallet_switchEthereumChain",
+    private static let unsupportedMethods: Set<String> = [
+        "eth_sign",
     ]
 
     private static let supportedEvents: Set<String> = [

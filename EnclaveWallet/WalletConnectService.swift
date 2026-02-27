@@ -199,14 +199,18 @@ class WalletConnectService: ObservableObject {
     }
 
     func approveSignRequest() {
-        guard let request = pendingRequest else { return }
+        guard let request = pendingRequest,
+              let wallet = EnclaveEngine.shared.currentWallet else { return }
+
+        let session = sessions.first { $0.topic == request.topic }
+        let appId = session?.peer.url ?? request.topic
 
         Task {
             do {
                 await MainActor.run { signingStatus = .signing }
 
                 let params = try request.params.get([String].self)
-                let signature: String
+                let hash: Data
 
                 switch request.method {
                 case "personal_sign":
@@ -217,20 +221,20 @@ class WalletConnectService: ObservableObject {
                     let prefix = "\u{19}Ethereum Signed Message:\n\(messageData.count)"
                     var prefixed = Data(prefix.utf8)
                     prefixed.append(messageData)
-                    let hash = Data(Digest.sha3(Array(prefixed), variant: .keccak256))
-                    signature = try EnclaveEngine.shared.signEVMHash(payloadHash: hash)
+                    hash = Data(Digest.sha3(Array(prefixed), variant: .keccak256))
 
                 case "eth_signTypedData_v4":
                     guard params.count >= 2,
                           let jsonData = params[1].data(using: .utf8) else {
                         throw WCServiceError.invalidParams
                     }
-                    let hash = Data(Digest.sha3(Array(jsonData), variant: .keccak256))
-                    signature = try EnclaveEngine.shared.signEVMHash(payloadHash: hash)
+                    hash = try EIP712Hasher.hashTypedData(json: jsonData)
 
                 default:
                     throw WCServiceError.invalidParams
                 }
+
+                let signature = try await SessionKeySigner.signHash(hash, appId: appId, wallet: wallet)
 
                 try await Sign.instance.respond(
                     topic: request.topic,
@@ -238,6 +242,7 @@ class WalletConnectService: ObservableObject {
                     response: .response(AnyCodable(signature))
                 )
 
+                log.notice("Sign response sent for \(request.method, privacy: .public)")
                 await MainActor.run {
                     signingStatus = .success
                     pendingRequest = nil

@@ -63,11 +63,25 @@ input {
 </div>
 
 <div class="card">
+    <h3>EIP-712 Sign</h3>
+    <div id="eip712-preview" class="result" style="display:block"></div>
+    <button onclick="signTypedData()">Sign Typed Data</button>
+    <div id="eip712-result" class="result" style="display:none"></div>
+</div>
+
+<div class="card">
     <h3>Send Transaction</h3>
     <input id="send-to" type="text" placeholder="Recipient (0x...)">
     <input id="send-value" type="text" value="0" placeholder="Value in wei (hex, e.g. 0x0)">
     <button onclick="sendTx()">Send</button>
     <div id="send-result" class="result" style="display:none"></div>
+</div>
+
+<div class="card">
+    <h3>Session Keys</h3>
+    <button onclick="listSessionKeys()">List Keys</button>
+    <div id="sk-list" style="margin-top:8px"></div>
+    <div id="sk-result" class="result" style="display:none"></div>
 </div>
 
 <script>
@@ -157,6 +171,54 @@ async function signMessage() {
     } catch (e) { show('sign-result', e.message, true); }
 }
 
+const eip712Data = {
+    types: {
+        EIP712Domain: [
+            { name: "name", type: "string" },
+            { name: "version", type: "string" },
+            { name: "chainId", type: "uint256" },
+            { name: "verifyingContract", type: "address" }
+        ],
+        Mail: [
+            { name: "from", type: "Person" },
+            { name: "to", type: "Person" },
+            { name: "contents", type: "string" }
+        ],
+        Person: [
+            { name: "name", type: "string" },
+            { name: "wallet", type: "address" }
+        ]
+    },
+    primaryType: "Mail",
+    domain: {
+        name: "Ether Mail",
+        version: "1",
+        chainId: 1,
+        verifyingContract: "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC"
+    },
+    message: {
+        from: { name: "Alice", wallet: "0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826" },
+        to: { name: "Bob", wallet: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB" },
+        contents: "Hello, Bob!"
+    }
+};
+
+document.getElementById('eip712-preview').textContent =
+    'Domain: ' + eip712Data.domain.name + ' v' + eip712Data.domain.version +
+    '\nType: ' + eip712Data.primaryType +
+    '\n\nMessage:' +
+    '\n  from: ' + eip712Data.message.from.name + ' (' + eip712Data.message.from.wallet + ')' +
+    '\n  to: ' + eip712Data.message.to.name + ' (' + eip712Data.message.to.wallet + ')' +
+    '\n  contents: "' + eip712Data.message.contents + '"';
+
+async function signTypedData() {
+    try {
+        if (!account) { show('eip712-result', 'Connect wallet first', true); return; }
+        const sig = await request('eth_signTypedData_v4', [account, JSON.stringify(eip712Data)]);
+        show('eip712-result', sig);
+    } catch (e) { show('eip712-result', e.message, true); }
+}
+
 async function sendTx() {
     try {
         if (!account) { show('send-result', 'Connect wallet first', true); return; }
@@ -165,6 +227,31 @@ async function sendTx() {
         const hash = await request('eth_sendTransaction', [{ from: account, to, value }]);
         show('send-result', 'Tx hash: ' + hash);
     } catch (e) { show('send-result', e.message, true); }
+}
+
+async function listSessionKeys() {
+    try {
+        const keys = await request('enclave_listSessionKeys', []);
+        const container = document.getElementById('sk-list');
+        if (!keys || keys.length === 0) {
+            container.innerHTML = '<div style="color:#999;font-size:12px">No session keys</div>';
+            return;
+        }
+        container.innerHTML = keys.map(k =>
+            '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12px;border-bottom:1px solid #eee">' +
+            '<div><div style="font-family:monospace">' + k.address + '</div>' +
+            '<div style="color:#999">' + k.appId + '</div></div>' +
+            '<button onclick="revokeSessionKey(\'' + k.appId.replace(/'/g, "\\'") + '\')" style="background:#dc2626;font-size:11px;padding:4px 8px">Revoke</button></div>'
+        ).join('');
+    } catch (e) { show('sk-result', e.message, true); }
+}
+
+async function revokeSessionKey(appId) {
+    try {
+        await request('enclave_revokeSessionKey', [appId]);
+        show('sk-result', 'Revoked: ' + appId);
+        listSessionKeys();
+    } catch (e) { show('sk-result', e.message, true); }
 }
 </script>
 </body>

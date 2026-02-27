@@ -144,6 +144,18 @@ struct UserOperation {
         return Data(batchSelector) + callsEncoded
     }
 
+    static func buildAddSessionKeyCallData(walletAddress: String, sessionKeyAddress: String) -> Data {
+        let selector = "b20b216e".hexToData() ?? Data()
+        let innerCalldata = Data(selector) + abiEncodeAddress(sessionKeyAddress)
+        return buildExecuteCallData(to: walletAddress, value: 0, data: innerCalldata)
+    }
+
+    static func buildRemoveSessionKeyCallData(walletAddress: String, sessionKeyAddress: String) -> Data {
+        let selector = "bf9890ab".hexToData() ?? Data()
+        let innerCalldata = Data(selector) + abiEncodeAddress(sessionKeyAddress)
+        return buildExecuteCallData(to: walletAddress, value: 0, data: innerCalldata)
+    }
+
     static func buildERC20Transfer(token: String, to: String, amount: BigUInt) -> Data {
         let transferSelector = "a9059cbb".hexToData() ?? Data()
         let recipient = abiEncodeAddress(to)

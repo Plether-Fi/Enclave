@@ -15,6 +15,8 @@ contract EnclaveWallet is BaseAccount {
     // EIP-1271
     bytes4 private constant EIP1271_MAGIC = 0x1626ba7e;
 
+    mapping(address => bool) public sessionKeys;
+
     // Spending limits: token => daily limit (0 = unlimited)
     mapping(address => uint256) public dailyLimit;
     // Spending tracking: token => day => spent
@@ -43,17 +45,36 @@ contract EnclaveWallet is BaseAccount {
         return isValid ? 0 : 1;
     }
 
-    // EIP-1271: validate an off-chain signature (for "Sign in with Ethereum", etc.)
     function isValidSignature(bytes32 hash, bytes calldata signature)
         external view returns (bytes4)
     {
-        require(signature.length == 64, "Invalid signature length");
-        (uint256 r, uint256 s) = abi.decode(signature, (uint256, uint256));
+        if (signature.length == 65) {
+            bytes32 r = bytes32(signature[:32]);
+            bytes32 s = bytes32(signature[32:64]);
+            uint8 v = uint8(signature[64]);
+            address recovered = ecrecover(hash, v, r, s);
+            if (recovered != address(0) && sessionKeys[recovered]) {
+                return EIP1271_MAGIC;
+            }
+            return 0xffffffff;
+        }
 
-        if (_verifyP256(hash, r, s)) {
+        require(signature.length == 64, "Invalid signature length");
+        (uint256 r256, uint256 s256) = abi.decode(signature, (uint256, uint256));
+        if (_verifyP256(hash, r256, s256)) {
             return EIP1271_MAGIC;
         }
         return 0xffffffff;
+    }
+
+    function addSessionKey(address key) external {
+        require(msg.sender == address(this), "Only self");
+        sessionKeys[key] = true;
+    }
+
+    function removeSessionKey(address key) external {
+        require(msg.sender == address(this), "Only self");
+        sessionKeys[key] = false;
     }
 
     function setDailyLimit(address token, uint256 amount) external {

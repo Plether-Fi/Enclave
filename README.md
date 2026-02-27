@@ -96,7 +96,7 @@ Enclave bridges Apple's proprietary silicon to the Ethereum Virtual Machine (EVM
 - [x] Paymaster integration (pm_sponsorUserOperation)
 - [x] Network switching (Arbitrum Sepolia / One)
 - [ ] Factory deployment to Arbitrum Sepolia
-- [ ] Session keys for gasless dApp interactions
+- [x] Session keys for off-chain signing (secp256k1 + EIP-1271)
 - [ ] IPFS dApp loading with content verification
 - [ ] App manifest system
 
@@ -174,7 +174,25 @@ Apple's Secure Enclave does not care about Ethereum's strict malleability rules.
 
 The Mac app does not send a standard transaction to "create" the wallet. It mathematically calculates what the address *will be* using the `CREATE2` opcode. The wallet is natively deployed by the Arbitrum Bundler during the user's very first outbound transaction via the `initCode` field.
 
-### 3. On-Chain Spending Limits
+### 3. How Signing Works
+
+Enclave uses two distinct signing paths depending on what's being signed:
+
+**Transactions (UserOps)** always require a P-256 Secure Enclave signature (Touch ID). Session keys cannot submit transactions — `_validateSignature` only accepts 64-byte P-256 signatures. This is the hard security boundary.
+
+**Off-chain signatures** (`personal_sign`, `eth_signTypedData_v4`) use secp256k1 session keys verified via EIP-1271. The flow:
+
+1. dApp requests a signature (via WalletConnect or the JS bridge)
+2. Enclave generates a secp256k1 key per dApp, stored in Keychain
+3. If the key isn't registered on-chain yet, a UserOp calling `addSessionKey(address)` is submitted (this is the only step requiring Touch ID)
+4. The message hash is signed with the secp256k1 session key, producing a 65-byte signature (r + s + v)
+5. The dApp verifies via `isValidSignature(hash, sig)` on the wallet contract, which calls `ecrecover` and checks the `sessionKeys` mapping
+
+Subsequent signatures for the same dApp are instant — no Touch ID, no on-chain transaction. The contract's `isValidSignature` dispatches on signature length: 65 bytes → secp256k1 session key path, 64 bytes → P-256 owner key path.
+
+Session keys are revocable by the owner via `removeSessionKey(address)` (also a UserOp). They can prove identity but never move funds.
+
+### 4. On-Chain Spending Limits
 
 `EnclaveWallet.sol` enforces per-token daily spending limits at the contract level. Limits are set by the wallet itself (via `execute` calling `setDailyLimit`), checked on every `execute` call for ETH value and ERC-20 transfer/approve amounts, and auto-reset every 24 hours based on block timestamp.
 
@@ -188,7 +206,7 @@ Enclave is an open-source project. The following areas have been implemented or 
 * ~~**Bundler Networking:** Full ERC-4337 UserOp construction, gas estimation, and bundler submission.~~ ✅
 * ~~**EIP-1271 Implementation:** `isValidSignature` with P-256 verification via RIP-7212 precompile.~~ ✅
 * **IPFS dApp Resolver:** Building the native Swift architecture to securely fetch, verify developer signatures, and load versioned HTML/JS payloads from IPFS directly into the Walled Garden.
-* **Session Keys:** Temporary secp256k1 session keys with per-contract, per-spend, and time-bound constraints for gasless dApp interactions.
+* ~~**Session Keys:** secp256k1 session keys for off-chain signing, one per dApp, registered on-chain via UserOp, verified via EIP-1271.~~ ✅
 * **App Manifest System:** Replace the hardcoded app list with manifest-driven dApp catalog.
 
 ---

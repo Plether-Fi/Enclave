@@ -10,6 +10,7 @@
 		F66FE4C12F431A88006DFAF2 /* BigInt in Frameworks */ = {isa = PBXBuildFile; productRef = F6B1G1NT0000000000000002 /* BigInt */; };
 		F66FE4C22F431A88006DFAF2 /* CryptoSwift in Frameworks */ = {isa = PBXBuildFile; productRef = F6CRYPT000000000000000002 /* CryptoSwift */; };
 		F6RWWK00000000000000002 /* WalletConnect in Frameworks */ = {isa = PBXBuildFile; productRef = F6RWWK00000000000000003 /* WalletConnect */; };
+		F6SECP000000000000000002 /* P256K in Frameworks */ = {isa = PBXBuildFile; productRef = F6SECP000000000000000003 /* P256K */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 				F66FE4C22F431A88006DFAF2 /* CryptoSwift in Frameworks */,
 				F66FE4C12F431A88006DFAF2 /* BigInt in Frameworks */,
 				F6RWWK00000000000000002 /* WalletConnect in Frameworks */,
+				F6SECP000000000000000002 /* P256K in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -77,6 +79,7 @@
 				F6B1G1NT0000000000000002 /* BigInt */,
 				F6CRYPT000000000000000002 /* CryptoSwift */,
 				F6RWWK00000000000000003 /* WalletConnect */,
+				F6SECP000000000000000003 /* P256K */,
 			);
 			productName = EnclaveWallet;
 			productReference = F62E0BBB2F42278400354D17 /* EnclaveWallet.app */;
@@ -110,6 +113,7 @@
 				F6B1G1NT0000000000000001 /* XCRemoteSwiftPackageReference "BigInt" */,
 				F6CRYPT000000000000000001 /* XCRemoteSwiftPackageReference "CryptoSwift" */,
 				F6RWWK00000000000000001 /* XCLocalSwiftPackageReference "vendor/reown-swift" */,
+				F6SECP000000000000000001 /* XCRemoteSwiftPackageReference "secp256k1.swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F62E0BBC2F42278400354D17 /* Products */;
@@ -355,6 +359,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		F6SECP000000000000000001 /* XCRemoteSwiftPackageReference "secp256k1.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/GigaBitcoin/secp256k1.swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.18.0;
+			};
+		};
 		F6B1G1NT0000000000000001 /* XCRemoteSwiftPackageReference "BigInt" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/attaswift/BigInt.git";
@@ -387,6 +399,11 @@
 		F6RWWK00000000000000003 /* WalletConnect */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = WalletConnect;
+		};
+		F6SECP000000000000000003 /* P256K */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F6SECP000000000000000001 /* XCRemoteSwiftPackageReference "secp256k1.swift" */;
+			productName = P256K;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

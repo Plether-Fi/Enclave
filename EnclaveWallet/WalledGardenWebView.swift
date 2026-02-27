@@ -1,6 +1,6 @@
 import SwiftUI
 import WebKit
-import CryptoKit
+import CryptoSwift
 import BigInt
 import os
 
@@ -141,8 +141,18 @@ struct WalledGardenWebView: NSViewRepresentable {
                 let prefix = "\u{19}Ethereum Signed Message:\n\(msgData.count)"
                 var prefixed = Data(prefix.utf8)
                 prefixed.append(msgData)
-                let hash = Data(SHA256.hash(data: prefixed))
-                return try EnclaveEngine.shared.signEVMHash(payloadHash: hash)
+                let hash = Data(Digest.sha3(Array(prefixed), variant: .keccak256))
+                let appId = webView?.url?.host ?? "unknown"
+                return try await SessionKeySigner.signHash(hash, appId: appId, wallet: wallet)
+
+            case "eth_signTypedData_v4":
+                guard let jsonStr = (params.count >= 2 ? params[1] : params.first) as? String,
+                      let jsonData = jsonStr.data(using: .utf8) else {
+                    throw BridgeError.invalidParams
+                }
+                let hash = try EIP712Hasher.hashTypedData(json: jsonData)
+                let appId = webView?.url?.host ?? "unknown"
+                return try await SessionKeySigner.signHash(hash, appId: appId, wallet: wallet)
 
             case "eth_sendTransaction":
                 guard let txObj = params.first as? [String: Any] else { throw BridgeError.invalidParams }
@@ -161,6 +171,15 @@ struct WalledGardenWebView: NSViewRepresentable {
                 NotificationCenter.default.post(name: .networkDidChange, object: nil)
                 let js = "if(typeof _enclaveChainChanged==='function')_enclaveChainChanged('\(chainIdHex)')"
                 for (_, wv) in webViews { wv.evaluateJavaScript(js, completionHandler: nil) }
+                return NSNull()
+
+            case "enclave_listSessionKeys":
+                let keys = SessionKeyManager.shared.allKeys()
+                return keys.map { ["appId": $0.appId, "address": $0.address] }
+
+            case "enclave_revokeSessionKey":
+                guard let appId = params.first as? String else { throw BridgeError.invalidParams }
+                SessionKeyManager.shared.remove(appId: appId)
                 return NSNull()
 
             default:
@@ -406,7 +425,7 @@ struct ActivityWebView: NSViewRepresentable {
 
         func updateWalletState() {
             let wallets = EnclaveEngine.shared.wallets.map { w -> [String: Any] in
-                ["index": w.index, "display": w.displayAddress, "address": w.address, "name": w.name]
+                ["index": w.index, "display": w.displayAddress, "address": w.address, "name": w.name, "deployed": w.isDeployed]
             }
             let state: [String: Any] = [
                 "displayAddress": EnclaveEngine.shared.currentWallet?.displayAddress ?? "No Wallet",
@@ -417,6 +436,7 @@ struct ActivityWebView: NSViewRepresentable {
                 "networkName": Config.activeNetwork.displayName,
                 "sessionsCount": WalletConnectService.shared.sessions.count,
                 "selectedIndex": EnclaveEngine.shared.selectedIndex,
+                "deployed": EnclaveEngine.shared.currentWallet?.isDeployed ?? false,
                 "wallets": wallets,
             ]
             guard let jsonData = try? JSONSerialization.data(withJSONObject: state),

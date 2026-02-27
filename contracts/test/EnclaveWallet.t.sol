@@ -229,6 +229,72 @@ contract EnclaveWalletTest is Test {
         wallet.execute(makeAddr("recipient"), 50 ether, "");
     }
 
+    // ---- Session Key Tests ----
+
+    function test_addSessionKey_only_self() public {
+        EnclaveWallet wallet = factory.createAccount(PUB_X, PUB_Y, 0);
+        vm.expectRevert("Only self");
+        wallet.addSessionKey(makeAddr("sessionKey"));
+    }
+
+    function test_removeSessionKey_only_self() public {
+        EnclaveWallet wallet = factory.createAccount(PUB_X, PUB_Y, 0);
+        vm.expectRevert("Only self");
+        wallet.removeSessionKey(makeAddr("sessionKey"));
+    }
+
+    function test_addRemoveSessionKey_via_execute() public {
+        EnclaveWallet wallet = factory.createAccount(PUB_X, PUB_Y, 0);
+        address key = makeAddr("sessionKey");
+
+        vm.prank(entryPointAddr);
+        wallet.execute(
+            address(wallet), 0,
+            abi.encodeWithSelector(EnclaveWallet.addSessionKey.selector, key)
+        );
+        assertTrue(wallet.sessionKeys(key));
+
+        vm.prank(entryPointAddr);
+        wallet.execute(
+            address(wallet), 0,
+            abi.encodeWithSelector(EnclaveWallet.removeSessionKey.selector, key)
+        );
+        assertFalse(wallet.sessionKeys(key));
+    }
+
+    function test_isValidSignature_secp256k1_registered() public {
+        EnclaveWallet wallet = factory.createAccount(PUB_X, PUB_Y, 0);
+
+        uint256 privKey = 0xA11CE;
+        address signer = vm.addr(privKey);
+
+        vm.prank(entryPointAddr);
+        wallet.execute(
+            address(wallet), 0,
+            abi.encodeWithSelector(EnclaveWallet.addSessionKey.selector, signer)
+        );
+
+        bytes32 hash = keccak256("test message");
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privKey, hash);
+        bytes memory sig = abi.encodePacked(r, s, v);
+        assertEq(sig.length, 65);
+
+        bytes4 result = wallet.isValidSignature(hash, sig);
+        assertEq(result, bytes4(0x1626ba7e));
+    }
+
+    function test_isValidSignature_secp256k1_unregistered() public {
+        EnclaveWallet wallet = factory.createAccount(PUB_X, PUB_Y, 0);
+
+        uint256 privKey = 0xB0B;
+        bytes32 hash = keccak256("test message");
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privKey, hash);
+        bytes memory sig = abi.encodePacked(r, s, v);
+
+        bytes4 result = wallet.isValidSignature(hash, sig);
+        assertEq(result, bytes4(0xffffffff));
+    }
+
     function test_approve_spending_limit() public {
         EnclaveWallet wallet = factory.createAccount(PUB_X, PUB_Y, 0);
 

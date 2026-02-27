@@ -12,22 +12,25 @@ struct ContentView: View {
     @State private var usdcBalance: String = "..."
     @State private var showSend = false
     @State private var showReceive = false
-    @State private var urlInput = ""
     @State private var activeURL = "kitchen_sink"
     @State private var currentURL = ""
-    @State private var showCustomURL = false
     @State private var activityRefreshId = UUID()
     @State private var showSessions = false
+    @State private var lastPasteboardCount = NSPasteboard.general.changeCount
 
     @ObservedObject private var wcService = WalletConnectService.shared
 
     var body: some View {
         HSplitView {
-            VStack(spacing: 0) {
-                toolbar
-                balanceBar
+            HStack(spacing: 0) {
+                appSidebar
                 Divider()
-                WalledGardenWebView(urlString: activeURL, currentURL: $currentURL)
+                VStack(spacing: 0) {
+                    toolbar
+                    balanceBar
+                    Divider()
+                    WalledGardenWebView(urlString: activeURL, currentURL: $currentURL)
+                }
             }
             .frame(minWidth: 300)
             ActivityWebView()
@@ -70,6 +73,7 @@ struct ContentView: View {
             )
         }
         .task { refreshBalances() }
+        .task { await monitorClipboard() }
     }
 
     private func refreshWallets() {
@@ -137,42 +141,6 @@ struct ContentView: View {
 
             Spacer()
 
-            Menu {
-                Button("Kitchen Sink") {
-                    showCustomURL = false
-                    activeURL = "kitchen_sink"
-                }
-                Button("Uniswap") {
-                    showCustomURL = false
-                    activeURL = "https://app.uniswap.org"
-                }
-                Button("Aave") {
-                    showCustomURL = false
-                    activeURL = "https://app.aave.com"
-                }
-                Divider()
-                Button("Enter URL...") {
-                    showCustomURL = true
-                }
-            } label: {
-                Label(appLabel, systemImage: "globe")
-                    .font(.system(.caption))
-            }
-
-            if showCustomURL {
-                TextField("https://...", text: $urlInput)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.caption, design: .monospaced))
-                    .frame(maxWidth: 250)
-                    .onSubmit { activeURL = urlInput }
-
-                Button {
-                    activeURL = urlInput
-                } label: {
-                    Image(systemName: "arrow.right.circle.fill")
-                }
-            }
-
             Button {
                 pasteWCURI()
             } label: {
@@ -228,12 +196,46 @@ struct ContentView: View {
         .padding(.vertical, 8)
     }
 
-    private var appLabel: String {
-        switch activeURL {
-        case "kitchen_sink": "Kitchen Sink"
-        case "https://app.uniswap.org": "Uniswap"
-        case "https://app.aave.com": "Aave"
-        default: "dApp"
+    private var appSidebar: some View {
+        VStack(spacing: 8) {
+            sidebarButton("house.fill", url: "kitchen_sink")
+            sidebarButton("U", url: "https://app.uniswap.org")
+            sidebarButton("A", url: "https://app.aave.com")
+            Spacer()
+        }
+        .padding(.vertical, 8)
+        .frame(width: 44)
+        .background(Color.black.opacity(0.03))
+    }
+
+    private func sidebarButton(_ icon: String, url: String) -> some View {
+        let isActive = activeURL == url
+        return Button { activeURL = url } label: {
+            Group {
+                if icon.count == 1 && !icon.contains(".") {
+                    Text(icon).font(.system(.body, design: .rounded)).bold()
+                } else {
+                    Image(systemName: icon)
+                }
+            }
+            .frame(width: 32, height: 32)
+            .background(isActive ? Color.accentColor.opacity(0.2) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func monitorClipboard() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(1))
+            let count = NSPasteboard.general.changeCount
+            guard count != lastPasteboardCount else { continue }
+            lastPasteboardCount = count
+
+            guard let str = NSPasteboard.general.string(forType: .string),
+                  str.hasPrefix("wc:") else { continue }
+            log.notice("Auto-detected WC URI in clipboard")
+            WalletConnectService.shared.pair(uriString: str)
         }
     }
 

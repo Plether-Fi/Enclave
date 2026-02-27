@@ -366,10 +366,11 @@ struct ActivityWebView: NSViewRepresentable {
 
         func updateWalletState() {
             let wallets = EnclaveEngine.shared.wallets.map { w -> [String: Any] in
-                ["index": w.index, "display": w.displayAddress]
+                ["index": w.index, "display": w.displayAddress, "address": w.address]
             }
             let state: [String: Any] = [
                 "displayAddress": EnclaveEngine.shared.currentWallet?.displayAddress ?? "No Wallet",
+                "address": EnclaveEngine.shared.currentWallet?.address ?? "",
                 "ethBalance": UserDefaults.standard.string(forKey: "cachedEthBalance") ?? "...",
                 "usdcBalance": UserDefaults.standard.string(forKey: "cachedUsdcBalance") ?? "...",
                 "networkName": Config.activeNetwork.displayName,

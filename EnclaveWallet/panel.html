@@ -15,6 +15,7 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
     border: 1px solid #ddd; user-select: none;
 }
 .wallet-addr:hover { background: #e0e0e0; }
+.blockie { width: 32px; height: 32px; border-radius: 4px; vertical-align: middle; margin-right: 6px; image-rendering: pixelated; }
 .wallet-menu {
     display: none; position: absolute; background: white; border: 1px solid #ddd;
     border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 10;
@@ -100,6 +101,41 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
 <div id="history"></div>
 
 <script>
+function makeBlockie(address) {
+    var seed = address.toLowerCase();
+    function xorshift(s) {
+        s[0] ^= s[0] << 13; s[0] ^= s[0] >> 17; s[0] ^= s[0] << 5;
+        return (s[0] >>> 0) / 4294967296;
+    }
+    var s = [0];
+    for (var i = 0; i < seed.length; i++) {
+        s[0] = (s[0] + seed.charCodeAt(i) * (i + 1)) | 0;
+    }
+    function randColor() {
+        var h = Math.floor(xorshift(s) * 360);
+        var sl = 40 + Math.floor(xorshift(s) * 20);
+        var l = 40 + Math.floor(xorshift(s) * 30);
+        return 'hsl(' + h + ',' + sl + '%,' + l + '%)';
+    }
+    var color = randColor(), bg = randColor(), spot = randColor();
+    var data = [];
+    for (var i = 0; i < 64; i++) {
+        var r = xorshift(s);
+        data.push(r < 0.33 ? 0 : r < 0.66 ? 1 : 2);
+    }
+    var c = document.createElement('canvas');
+    c.width = 8; c.height = 8;
+    var ctx = c.getContext('2d');
+    var colors = [bg, color, spot];
+    for (var i = 0; i < 64; i++) {
+        var x = i % 8, y = Math.floor(i / 8);
+        var mx = x < 4 ? x : 7 - x;
+        ctx.fillStyle = colors[data[y * 4 + mx]];
+        ctx.fillRect(x, y, 1, 1);
+    }
+    return c.toDataURL();
+}
+
 function post(action, data) {
     var msg = { action: action };
     if (data !== undefined) msg.data = data;
@@ -112,7 +148,12 @@ window.updateWallet = function(jsonStr) {
     var s = JSON.parse(jsonStr);
     _walletState = s;
 
-    document.getElementById('wallet-address').textContent = s.displayAddress || 'No Wallet';
+    var addrEl = document.getElementById('wallet-address');
+    if (s.address) {
+        addrEl.innerHTML = '<img class="blockie" src="' + makeBlockie(s.address) + '"> ' + (s.displayAddress || 'No Wallet');
+    } else {
+        addrEl.textContent = s.displayAddress || 'No Wallet';
+    }
     document.getElementById('eth-bal').textContent = s.ethBalance || '...';
     document.getElementById('usdc-bal').textContent = s.usdcBalance || '...';
 
@@ -132,7 +173,8 @@ function buildWalletMenu(wallets, selectedIndex) {
     var html = '';
     wallets.forEach(function(w) {
         var cls = 'wallet-menu-item' + (w.index === selectedIndex ? ' active' : '');
-        html += '<button class="' + cls + '" onclick="selectWallet(' + w.index + ')">' + w.display + '</button>';
+        var img = w.address ? '<img class="blockie" src="' + makeBlockie(w.address) + '"> ' : '';
+        html += '<button class="' + cls + '" onclick="selectWallet(' + w.index + ')">' + img + w.display + '</button>';
     });
     if (wallets.length > 0) html += '<div class="wallet-menu-sep"></div>';
     html += '<button class="wallet-menu-item new-wallet" onclick="post(\'newWallet\')">New Wallet</button>';

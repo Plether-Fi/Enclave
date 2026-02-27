@@ -84,6 +84,11 @@ function _enclaveResponse(id, result, error) {
     delete pending[id];
 }
 
+function _enclaveAccountsChanged(accounts) {
+    account = accounts[0] || null;
+    document.getElementById('status').textContent = account ? 'Connected: ' + account : 'Not connected';
+}
+
 function show(elId, text, isError) {
     const el = document.getElementById(elId);
     el.style.display = 'block';

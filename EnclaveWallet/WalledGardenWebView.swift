@@ -47,6 +47,23 @@ struct WalledGardenWebView: NSViewRepresentable {
 
         init(currentURL: Binding<String>) {
             _currentURL = currentURL
+            super.init()
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(handleAccountChange),
+                name: .walletStateDidChange, object: nil
+            )
+        }
+
+        @objc private func handleAccountChange() {
+            guard let address = EnclaveEngine.shared.currentWallet?.address else { return }
+            log.notice("Account changed to \(address, privacy: .public), notifying \(self.webViews.count) webviews")
+            let js = "if(typeof _enclaveAccountsChanged==='function')_enclaveAccountsChanged(['\(address)'])"
+            for (key, wv) in webViews {
+                log.notice("Sending accountsChanged to \(key, privacy: .public)")
+                wv.evaluateJavaScript(js) { _, error in
+                    if let error { log.error("JS eval error: \(error.localizedDescription, privacy: .public)") }
+                }
+            }
         }
 
         func createWebView(for urlString: String) -> WKWebView {

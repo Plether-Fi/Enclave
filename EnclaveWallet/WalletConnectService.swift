@@ -399,6 +399,39 @@ class WalletConnectService: ObservableObject {
 
     // MARK: - Session Management
 
+    func emitAccountsChanged() {
+        guard let wallet = EnclaveEngine.shared.currentWallet else { return }
+        for session in sessions {
+            for (namespace, _) in session.namespaces {
+                guard let chain = session.namespaces[namespace]?.chains?.first else { continue }
+                let account = Account(blockchain: chain, address: wallet.address)!
+                let updatedAccounts = [account]
+                let updatedNamespace = SessionNamespace(
+                    chains: session.namespaces[namespace]?.chains.map(Array.init),
+                    accounts: updatedAccounts,
+                    methods: session.namespaces[namespace]?.methods ?? [],
+                    events: session.namespaces[namespace]?.events ?? []
+                )
+                Task {
+                    do {
+                        try await Sign.instance.update(
+                            topic: session.topic,
+                            namespaces: [namespace: updatedNamespace]
+                        )
+                        try await Sign.instance.emit(
+                            topic: session.topic,
+                            event: Session.Event(name: "accountsChanged", data: AnyCodable([wallet.address])),
+                            chainId: chain
+                        )
+                        log.notice("Emitted accountsChanged to \(session.peer.name, privacy: .public)")
+                    } catch {
+                        log.error("accountsChanged emit failed: \(error.localizedDescription, privacy: .public)")
+                    }
+                }
+            }
+        }
+    }
+
     func disconnect(topic: String) {
         Task {
             try? await Sign.instance.disconnect(topic: topic)

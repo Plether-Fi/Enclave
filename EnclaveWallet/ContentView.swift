@@ -139,6 +139,7 @@ struct ContentView: View {
         refreshBalances()
         notifyActivityWebView()
         activityRefreshId = UUID()
+        wcService.emitAccountsChanged()
     }
 
     private func saveApps() {

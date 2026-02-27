@@ -10,51 +10,64 @@ struct WalledGardenWebView: NSViewRepresentable {
     var urlString: String
     @Binding var currentURL: String
 
-    func makeNSView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        config.preferences.javaScriptCanOpenWindowsAutomatically = true
-        config.defaultWebpagePreferences.allowsContentJavaScript = true
-        config.userContentController.add(context.coordinator, name: "enclave")
-
-        let webView = WKWebView(frame: .zero, configuration: config)
-        webView.navigationDelegate = context.coordinator
-        webView.uiDelegate = context.coordinator
-        context.coordinator.webView = webView
-        loadURL(urlString, into: webView)
-        return webView
+    func makeNSView(context: Context) -> NSView {
+        NSView()
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {
-        if context.coordinator.lastLoadedURL != urlString {
-            context.coordinator.lastLoadedURL = urlString
-            loadURL(urlString, into: nsView)
-        }
-    }
+    func updateNSView(_ container: NSView, context: Context) {
+        let coordinator = context.coordinator
+        if coordinator.activeURL == urlString { return }
+        coordinator.activeURL = urlString
 
-    private func loadURL(_ string: String, into webView: WKWebView) {
-        if string == "kitchen_sink" {
-            if let url = Bundle.main.url(forResource: "kitchen_sink", withExtension: "html") {
-                webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-            }
-            return
+        let webView: WKWebView
+        if let cached = coordinator.webViews[urlString] {
+            webView = cached
+        } else {
+            webView = coordinator.createWebView(for: urlString)
+            coordinator.webViews[urlString] = webView
         }
 
-        var urlStr = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !urlStr.contains("://") { urlStr = "https://" + urlStr }
-
-        guard let url = URL(string: urlStr) else { return }
-        webView.load(URLRequest(url: url))
+        container.subviews.forEach { $0.removeFromSuperview() }
+        webView.frame = container.bounds
+        webView.autoresizingMask = [.width, .height]
+        container.addSubview(webView)
+        coordinator.webView = webView
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(currentURL: $currentURL) }
 
     class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
-        var lastLoadedURL = ""
+        var activeURL = ""
+        var webViews: [String: WKWebView] = [:]
         weak var webView: WKWebView?
         @Binding var currentURL: String
 
         init(currentURL: Binding<String>) {
             _currentURL = currentURL
+        }
+
+        func createWebView(for urlString: String) -> WKWebView {
+            let config = WKWebViewConfiguration()
+            config.preferences.javaScriptCanOpenWindowsAutomatically = true
+            config.defaultWebpagePreferences.allowsContentJavaScript = true
+            config.userContentController.add(self, name: "enclave")
+
+            let wv = WKWebView(frame: .zero, configuration: config)
+            wv.navigationDelegate = self
+            wv.uiDelegate = self
+
+            if urlString == "kitchen_sink" {
+                if let url = Bundle.main.url(forResource: "kitchen_sink", withExtension: "html") {
+                    wv.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+                }
+            } else {
+                var urlStr = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !urlStr.contains("://") { urlStr = "https://" + urlStr }
+                if let url = URL(string: urlStr) {
+                    wv.load(URLRequest(url: url))
+                }
+            }
+            return wv
         }
 
         // MARK: - WKScriptMessageHandler

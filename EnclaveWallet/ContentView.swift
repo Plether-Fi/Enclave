@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var showSend = false
     @State private var showReceive = false
     @State private var activeURL = "kitchen_sink"
+    @State private var visitedURLs: Set<String> = []
     @State private var currentURL = ""
     @State private var activityRefreshId = UUID()
     @State private var showSessions = false
@@ -199,6 +200,7 @@ struct ContentView: View {
     private var appSidebar: some View {
         VStack(spacing: 8) {
             sidebarButton("house.fill", url: "kitchen_sink")
+            sidebarButton("P", url: "https://app.plether.com")
             sidebarButton("U", url: "https://app.uniswap.org")
             sidebarButton("A", url: "https://app.aave.com")
             Spacer()
@@ -210,7 +212,11 @@ struct ContentView: View {
 
     private func sidebarButton(_ icon: String, url: String) -> some View {
         let isActive = activeURL == url
-        return Button { activeURL = url } label: {
+        let isCached = isActive || visitedURLs.contains(url)
+        return Button {
+            visitedURLs.insert(activeURL)
+            activeURL = url
+        } label: {
             Group {
                 if icon.count == 1 && !icon.contains(".") {
                     Text(icon).font(.system(.body, design: .rounded)).bold()
@@ -223,6 +229,12 @@ struct ContentView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(isCached ? Color.accentColor : Color.clear)
+                .frame(width: 3, height: 16)
+                .offset(x: -6)
+        }
     }
 
     private func monitorClipboard() async {

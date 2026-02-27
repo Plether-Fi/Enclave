@@ -61,7 +61,7 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            topBar
+            topBar.id(activityRefreshId)
             Divider()
             HSplitView {
                 HStack(spacing: 0) {
@@ -91,7 +91,6 @@ struct ContentView: View {
                         }
                     }
                 )
-                    .id(activityRefreshId)
                     .frame(width: 360)
             }
         }
@@ -134,6 +133,10 @@ struct ContentView: View {
         .task { refreshBalances() }
         .task { await monitorClipboard() }
         .background(WindowAccessor())
+        .onReceive(NotificationCenter.default.publisher(for: .networkDidChange)) { _ in
+            refreshBalances()
+            activityRefreshId = UUID()
+        }
     }
 
     private func refreshWallets() {

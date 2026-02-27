@@ -180,6 +180,8 @@ class WalletConnectService: ObservableObject {
             pendingRequest = request
         case "eth_sendTransaction":
             pendingRequest = request
+        case "wallet_switchEthereumChain":
+            handleSwitchChain(request)
         case "eth_chainId", "eth_accounts", "net_version",
              "eth_getBalance", "eth_call", "eth_blockNumber",
              "eth_estimateGas", "eth_gasPrice", "eth_getCode",
@@ -315,6 +317,59 @@ class WalletConnectService: ObservableObject {
         guard let request = pendingRequest else { return }
         respondError(request: request, code: 4001, message: "User rejected")
         pendingRequest = nil
+    }
+
+    // MARK: - Chain Switching
+
+    private func handleSwitchChain(_ request: Request) {
+        Task {
+            do {
+                let params = try request.params.get([[String: String]].self)
+                guard let chainIdHex = params.first?["chainId"],
+                      let chainId = UInt64(chainIdHex.stripHexPrefix(), radix: 16) else {
+                    throw WCServiceError.invalidParams
+                }
+
+                guard let network = Network.allCases.first(where: { $0.chainId == chainId }) else {
+                    respondError(request: request, code: 4902, message: "Unrecognized chain ID: \(chainIdHex)")
+                    return
+                }
+
+                await MainActor.run { Config.activeNetwork = network }
+                NotificationCenter.default.post(name: .networkDidChange, object: nil)
+
+                try await Sign.instance.respond(
+                    topic: request.topic,
+                    requestId: request.id,
+                    response: .response(AnyCodable(any: NSNull()))
+                )
+
+                emitChainChanged()
+                log.notice("Switched to \(network.displayName, privacy: .public) via WC request")
+            } catch {
+                respondError(request: request, code: -32000, message: error.localizedDescription)
+            }
+        }
+    }
+
+    func emitChainChanged() {
+        let chainIdHex = "0x" + String(Config.activeNetwork.chainId, radix: 16)
+        for session in sessions {
+            for (_, ns) in session.namespaces {
+                guard let chain = ns.chains?.first else { continue }
+                Task {
+                    do {
+                        try await Sign.instance.emit(
+                            topic: session.topic,
+                            event: Session.Event(name: "chainChanged", data: AnyCodable(chainIdHex)),
+                            chainId: chain
+                        )
+                    } catch {
+                        log.error("chainChanged emit failed: \(error.localizedDescription, privacy: .public)")
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Read-only RPCs

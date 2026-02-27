@@ -148,6 +148,21 @@ struct WalledGardenWebView: NSViewRepresentable {
                 guard let txObj = params.first as? [String: Any] else { throw BridgeError.invalidParams }
                 return try await sendUserOperation(wallet: wallet, tx: txObj)
 
+            case "wallet_switchEthereumChain":
+                guard let chainObj = params.first as? [String: String],
+                      let chainIdHex = chainObj["chainId"],
+                      let chainId = UInt64(chainIdHex.stripHexPrefix(), radix: 16) else {
+                    throw BridgeError.invalidParams
+                }
+                guard let network = Network.allCases.first(where: { $0.chainId == chainId }) else {
+                    throw BridgeError.unsupportedChain(chainIdHex)
+                }
+                Config.activeNetwork = network
+                NotificationCenter.default.post(name: .networkDidChange, object: nil)
+                let js = "if(typeof _enclaveChainChanged==='function')_enclaveChainChanged('\(chainIdHex)')"
+                for (_, wv) in webViews { wv.evaluateJavaScript(js, completionHandler: nil) }
+                return NSNull()
+
             default:
                 throw BridgeError.unsupportedMethod(method)
             }
@@ -224,7 +239,9 @@ struct WalledGardenWebView: NSViewRepresentable {
 
         private func respond(id: Int, result: Any) {
             let jsonStr: String
-            if let str = result as? String {
+            if result is NSNull {
+                jsonStr = "null"
+            } else if let str = result as? String {
                 let escaped = str.replacingOccurrences(of: "\\", with: "\\\\")
                     .replacingOccurrences(of: "\"", with: "\\\"")
                 jsonStr = "\"\(escaped)\""
@@ -291,6 +308,7 @@ private enum BridgeError: LocalizedError {
     case invalidParams
     case unsupportedMethod(String)
     case txReverted
+    case unsupportedChain(String)
 
     var errorDescription: String? {
         switch self {
@@ -298,6 +316,7 @@ private enum BridgeError: LocalizedError {
         case .invalidParams: "Invalid parameters"
         case .unsupportedMethod(let m): "Unsupported method: \(m)"
         case .txReverted: "Transaction reverted"
+        case .unsupportedChain(let id): "Unrecognized chain ID: \(id)"
         }
     }
 }
@@ -353,6 +372,7 @@ struct ActivityWebView: NSViewRepresentable {
 
         @objc private func handleWalletStateChange() {
             updateWalletState()
+            loadTransactionHistory()
         }
 
         func userContentController(_ userContentController: WKUserContentController,
@@ -435,4 +455,5 @@ struct ActivityWebView: NSViewRepresentable {
 
 extension Notification.Name {
     static let walletStateDidChange = Notification.Name("walletStateDidChange")
+    static let networkDidChange = Notification.Name("networkDidChange")
 }

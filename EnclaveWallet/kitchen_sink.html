@@ -43,6 +43,13 @@ input {
 </div>
 
 <div class="card">
+    <h3>Network</h3>
+    <button onclick="switchChain('0x66eee')">Arb Sepolia (421614)</button>
+    <button onclick="switchChain('0xa4b1')">Arb One (42161)</button>
+    <div id="chain-result" class="result" style="display:none"></div>
+</div>
+
+<div class="card">
     <h3>Balance</h3>
     <button onclick="getBalance()">Get ETH Balance</button>
     <div id="bal-result" class="result" style="display:none"></div>
@@ -89,6 +96,10 @@ function _enclaveAccountsChanged(accounts) {
     document.getElementById('status').textContent = account ? 'Connected: ' + account : 'Not connected';
 }
 
+function _enclaveChainChanged(chainId) {
+    show('chain-result', 'Chain changed to: ' + chainId + ' (' + parseInt(chainId, 16) + ')');
+}
+
 function show(elId, text, isError) {
     const el = document.getElementById(elId);
     el.style.display = 'block';
@@ -110,6 +121,13 @@ async function getChainId() {
         const id = await request('eth_chainId', []);
         show('conn-result', 'Chain ID: ' + id + ' (' + parseInt(id, 16) + ')');
     } catch (e) { show('conn-result', e.message, true); }
+}
+
+async function switchChain(chainId) {
+    try {
+        await request('wallet_switchEthereumChain', [{ chainId }]);
+        show('chain-result', 'Switched to ' + chainId + ' (' + parseInt(chainId, 16) + ')');
+    } catch (e) { show('chain-result', e.message, true); }
 }
 
 async function getBlockNumber() {

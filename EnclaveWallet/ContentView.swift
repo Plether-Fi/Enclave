@@ -92,7 +92,7 @@ struct ContentView: View {
                     }
                 )
                     .id(activityRefreshId)
-                    .frame(minWidth: 220, idealWidth: 280, maxWidth: 360)
+                    .frame(width: 360)
             }
         }
         .sheet(isPresented: $showSend) {
@@ -130,8 +130,10 @@ struct ContentView: View {
                 onDisconnect: { topic in wcService.disconnect(topic: topic) }
             )
         }
+        .ignoresSafeArea()
         .task { refreshBalances() }
         .task { await monitorClipboard() }
+        .background(WindowAccessor())
     }
 
     private func refreshWallets() {
@@ -249,8 +251,9 @@ struct ContentView: View {
             .buttonStyle(.borderless)
             .frame(width: 44, alignment: .trailing)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.leading, 88)
+        .padding(.trailing, 16)
+        .padding(.vertical, 12)
     }
 
     private var appSidebar: some View {
@@ -953,4 +956,40 @@ struct TransactionPreviewView: View {
         case .unknown: return .gray
         }
     }
+}
+
+// MARK: - Window Accessor
+
+private class WindowConfigView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyConfig()
+    }
+
+    override func layout() {
+        super.layout()
+        applyConfig()
+    }
+
+    private func applyConfig() {
+        guard let window else { return }
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        if !window.styleMask.contains(.fullSizeContentView) {
+            window.styleMask.insert(.fullSizeContentView)
+        }
+        window.isMovableByWindowBackground = true
+
+        if window.toolbar == nil {
+            let toolbar = NSToolbar(identifier: "main")
+            toolbar.showsBaselineSeparator = false
+            window.toolbar = toolbar
+            window.toolbarStyle = .unified
+        }
+    }
+}
+
+struct WindowAccessor: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { WindowConfigView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }

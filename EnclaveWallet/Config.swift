@@ -60,8 +60,7 @@ nonisolated enum Network: String, CaseIterable, Sendable {
 
 nonisolated enum Config {
     static let entryPointAddress = "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
-
-    static let factoryAddress = "0xdAe52ECfef30895d7B9Fe85C361399e61f8E353B"
+    static let factoryAddress = "0xff49fb5d47ccd009cd60b2b57839aa8887a8d979"
 
     static let gasPolicyId = "ff3e2c3f-3d8e-4046-959e-06fb0324cf2c"
 

@@ -212,8 +212,7 @@ struct ContentView: View {
                         ForEach(Network.allCases, id: \.self) { network in
                             Button {
                                 Config.activeNetwork = network
-                                refreshBalances()
-                                activityRefreshId = UUID()
+                                refreshWallets()
                             } label: {
                                 HStack {
                                     Text(network.displayName)

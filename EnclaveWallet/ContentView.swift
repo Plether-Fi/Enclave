@@ -410,32 +410,94 @@ struct SessionProposalView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("Session Proposal").font(.title2).bold()
+            Text("Connect").font(.title2).bold()
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("dApp:").foregroundColor(.secondary)
+            HStack(spacing: 12) {
+                if let iconURL = proposal.proposer.icons.first.flatMap({ URL(string: $0) }) {
+                    AsyncImage(url: iconURL) { image in
+                        image.resizable().scaledToFit()
+                    } placeholder: {
+                        RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.2))
+                    }
+                    .frame(width: 40, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                VStack(alignment: .leading, spacing: 2) {
                     Text(proposal.proposer.name).bold()
-                }
-                HStack {
-                    Text("URL:").foregroundColor(.secondary)
                     Text(proposal.proposer.url)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.secondary)
                 }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-                if !proposal.requiredNamespaces.isEmpty {
-                    Text("Requested chains:").foregroundColor(.secondary)
-                    ForEach(Array(proposal.requiredNamespaces.keys), id: \.self) { key in
-                        if let ns = proposal.requiredNamespaces[key] {
-                            Text("  \(key): \(ns.methods.joined(separator: ", "))")
+            if !proposal.proposer.description.isEmpty {
+                Text(proposal.proposer.description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            let allNamespaces = mergedNamespaces
+            if !allNamespaces.chains.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Networks").font(.subheadline).bold()
+                    FlowLayout(spacing: 6) {
+                        ForEach(allNamespaces.chains, id: \.self) { chain in
+                            let supported = Self.supportedChains.contains(chain)
+                            Text(chainName(chain))
                                 .font(.caption)
+                                .foregroundColor(supported ? .primary : .secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(supported ? Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.08))
+                                .clipShape(Capsule())
+                                .opacity(supported ? 1 : 0.7)
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding()
-            .background(Color.secondary.opacity(0.08))
-            .cornerRadius(8)
+
+            if !allNamespaces.methods.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Methods").font(.subheadline).bold()
+                    FlowLayout(spacing: 6) {
+                        ForEach(allNamespaces.methods.sorted(), id: \.self) { method in
+                            let supported = Self.supportedMethods.contains(method)
+                            Text(method)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(supported ? .primary : .secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(supported ? Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.08))
+                                .clipShape(Capsule())
+                                .opacity(supported ? 1 : 0.7)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if !allNamespaces.events.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Events").font(.subheadline).bold()
+                    FlowLayout(spacing: 6) {
+                        ForEach(allNamespaces.events.sorted(), id: \.self) { event in
+                            let supported = Self.supportedEvents.contains(event)
+                            Text(event)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(supported ? .primary : .secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(supported ? Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.08))
+                                .clipShape(Capsule())
+                                .opacity(supported ? 1 : 0.7)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             HStack {
                 Button("Reject") {
@@ -452,6 +514,124 @@ struct SessionProposalView: View {
         }
         .padding(24)
         .frame(width: 420)
+    }
+
+    private var mergedNamespaces: (chains: [String], methods: [String], events: [String]) {
+        var chains: [String] = []
+        var methods: Set<String> = []
+        var events: Set<String> = []
+
+        for (_, ns) in proposal.requiredNamespaces {
+            if let c = ns.chains { chains.append(contentsOf: c.map(\.absoluteString)) }
+            methods.formUnion(ns.methods)
+            events.formUnion(ns.events)
+        }
+        if let optional = proposal.optionalNamespaces {
+            for (_, ns) in optional {
+                if let c = ns.chains {
+                    for chain in c where !chains.contains(chain.absoluteString) {
+                        chains.append(chain.absoluteString)
+                    }
+                }
+                methods.formUnion(ns.methods)
+                events.formUnion(ns.events)
+            }
+        }
+        return (chains, Array(methods), Array(events))
+    }
+
+    private static let knownChains: [String: String] = [
+        "eip155:1": "Ethereum",
+        "eip155:10": "Optimism",
+        "eip155:56": "BNB Chain",
+        "eip155:100": "Gnosis",
+        "eip155:130": "Engram",
+        "eip155:137": "Polygon",
+        "eip155:143": "Trikon",
+        "eip155:196": "X Layer",
+        "eip155:324": "zkSync Era",
+        "eip155:480": "World Chain",
+        "eip155:1101": "Polygon zkEVM",
+        "eip155:1301": "Unichain Sepolia",
+        "eip155:1329": "Sei",
+        "eip155:1868": "Soneium",
+        "eip155:5000": "Mantle",
+        "eip155:7777777": "Zora",
+        "eip155:8453": "Base",
+        "eip155:34443": "Mode",
+        "eip155:42161": "Arbitrum One",
+        "eip155:42170": "Arbitrum Nova",
+        "eip155:42220": "Celo",
+        "eip155:43114": "Avalanche",
+        "eip155:59144": "Linea",
+        "eip155:81457": "Blast",
+        "eip155:421614": "Arbitrum Sepolia",
+        "eip155:534352": "Scroll",
+        "eip155:11155111": "Sepolia",
+        "eip155:11155420": "OP Sepolia",
+        "eip155:168587773": "Blast Sepolia",
+    ]
+
+    private static let supportedChains: Set<String> = Set(
+        Network.allCases.map(\.caip2)
+    )
+
+    private static let supportedMethods: Set<String> = [
+        "personal_sign", "eth_signTypedData_v4", "eth_sendTransaction",
+        "eth_accounts", "eth_requestAccounts", "eth_chainId",
+        "eth_getBalance", "eth_call", "eth_blockNumber",
+        "eth_estimateGas", "eth_gasPrice", "eth_getCode",
+        "eth_getTransactionCount", "eth_getTransactionReceipt",
+        "net_version", "wallet_switchEthereumChain",
+    ]
+
+    private static let supportedEvents: Set<String> = [
+        "chainChanged", "accountsChanged",
+    ]
+
+    private func chainName(_ caip2: String) -> String {
+        Self.knownChains[caip2] ?? caip2
+    }
+}
+
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth && x > 0 {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: maxWidth, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX && x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
 

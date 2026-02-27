@@ -54,6 +54,7 @@ struct WalledGardenWebView: NSViewRepresentable {
             config.preferences.javaScriptCanOpenWindowsAutomatically = true
             config.defaultWebpagePreferences.allowsContentJavaScript = true
             config.userContentController.add(self, name: "enclave")
+            config.setURLSchemeHandler(IPFSSchemeHandler(), forURLScheme: "ipfs")
 
             let wv = WKWebView(frame: .zero, configuration: config)
             wv.navigationDelegate = self

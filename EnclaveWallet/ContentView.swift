@@ -6,12 +6,27 @@ import os
 
 private let log = Logger(subsystem: "com.plether.EnclaveWallet", category: "UI")
 
+nonisolated enum AppProtocol: String, CaseIterable, Sendable {
+    case https = "https://"
+    case ipfs = "ipfs://"
+
+    var placeholder: String {
+        switch self {
+        case .https: "app.example.com"
+        case .ipfs: "bafy... or CID/path"
+        }
+    }
+}
+
 nonisolated struct AppEntry: Codable, Identifiable, Sendable {
     var id: String { url }
     let url: String
 
+    var isIPFS: Bool { url.hasPrefix("ipfs://") }
+
     var icon: String {
-        URL(string: url).flatMap(\.host)?.split(separator: ".").dropLast().last.map { String($0.prefix(1)).uppercased() } ?? "?"
+        if isIPFS { return "cube" }
+        return URL(string: url).flatMap(\.host)?.split(separator: ".").dropLast().last.map { String($0.prefix(1)).uppercased() } ?? "?"
     }
 }
 
@@ -40,6 +55,7 @@ struct ContentView: View {
     }()
     @State private var showAddApp = false
     @State private var newAppAddress = ""
+    @State private var selectedProtocol: AppProtocol = .https
 
     @ObservedObject private var wcService = WalletConnectService.shared
 
@@ -270,10 +286,12 @@ struct ContentView: View {
         VStack(spacing: 12) {
             Text("Add App").font(.headline)
             HStack(spacing: 4) {
-                Text("https://")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.secondary)
-                TextField("app.example.com", text: $newAppAddress)
+                Picker("", selection: $selectedProtocol) {
+                    ForEach(AppProtocol.allCases, id: \.self) { Text($0.rawValue) }
+                }
+                .labelsHidden()
+                .fixedSize()
+                TextField(selectedProtocol.placeholder, text: $newAppAddress)
                     .font(.system(.body, design: .monospaced))
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 200)
@@ -296,7 +314,11 @@ struct ContentView: View {
     private func addApp() {
         let address = newAppAddress.trimmingCharacters(in: .whitespaces)
         guard !address.isEmpty else { return }
-        let url = "https://" + address
+        let url: String
+        switch selectedProtocol {
+        case .https: url = "https://" + address
+        case .ipfs: url = "ipfs://" + address
+        }
         guard !apps.contains(where: { $0.url == url }) else {
             newAppAddress = ""
             showAddApp = false

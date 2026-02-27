@@ -135,6 +135,10 @@ struct WalledGardenWebView: NSViewRepresentable {
                 let block = try await RPCClient.shared.getBlockNumber()
                 return "0x" + String(block, radix: 16)
 
+            case "eth_getCode":
+                let address = (params.first as? String) ?? wallet.address
+                return try await RPCClient.shared.getCode(address: address)
+
             case "personal_sign":
                 guard let hexMsg = params.first as? String else { throw BridgeError.invalidParams }
                 let msgData = hexMsg.stripHexPrefix().hexToData() ?? Data()

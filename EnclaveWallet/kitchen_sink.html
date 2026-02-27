@@ -51,6 +51,11 @@ input {
 </div>
 
 <div class="card">
+    <h3>Wallet Status</h3>
+    <div id="deploy-status" style="font-size:13px;color:#999">Connect wallet to check</div>
+</div>
+
+<div class="card">
     <h3>Balance</h3>
     <button onclick="getBalance()">Get ETH Balance</button>
     <div id="bal-result" class="result" style="display:none"></div>
@@ -104,10 +109,12 @@ function _enclaveResponse(id, result, error) {
 function _enclaveAccountsChanged(accounts) {
     account = accounts[0] || null;
     document.getElementById('status').textContent = account ? 'Connected: ' + account : 'Not connected';
+    checkDeployStatus();
 }
 
 function _enclaveChainChanged(chainId) {
     show('chain-result', 'Chain changed to: ' + chainId + ' (' + parseInt(chainId, 16) + ')');
+    checkDeployStatus();
 }
 
 function show(elId, text, isError) {
@@ -117,12 +124,38 @@ function show(elId, text, isError) {
     el.className = 'result ' + (isError ? 'error' : 'success');
 }
 
+function explorerURL(chainId, address) {
+    var id = parseInt(chainId, 16);
+    if (id === 421614) return 'https://sepolia.arbiscan.io/address/' + address;
+    if (id === 42161) return 'https://arbiscan.io/address/' + address;
+    return null;
+}
+
+async function checkDeployStatus() {
+    var el = document.getElementById('deploy-status');
+    if (!account) { el.textContent = 'Connect wallet to check'; return; }
+    try {
+        var code = await request('eth_getCode', [account, 'latest']);
+        var chainId = await request('eth_chainId', []);
+        var deployed = code && code !== '0x' && code !== '0x0';
+        if (deployed) {
+            var url = explorerURL(chainId, account);
+            el.innerHTML = '<span style="color:#2e7d32;font-weight:600">Deployed</span>' +
+                (url ? ' &middot; <a href="' + url + '" target="_blank" style="color:#1598F2;text-decoration:none">View on Arbiscan</a>' : '');
+        } else {
+            el.innerHTML = '<span style="color:#e65100;font-weight:600">Not deployed</span>' +
+                '<div style="color:#888;font-size:11px;margin-top:4px">Send a transaction to auto-deploy via initCode.</div>';
+        }
+    } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
 async function connectWallet() {
     try {
         const accounts = await request('eth_requestAccounts', []);
         account = accounts[0];
         document.getElementById('status').textContent = 'Connected: ' + account;
         show('conn-result', 'Accounts: ' + JSON.stringify(accounts));
+        checkDeployStatus();
     } catch (e) { show('conn-result', e.message, true); }
 }
 

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, system-ui; padding: 16px; background: #fafafa; color: #111; }
+h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Wallet section */
+#wallet { margin-bottom: 20px; }
+.wallet-addr {
+    display: inline-block; font-size: 12px; font-family: monospace;
+    background: #eee; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+    border: 1px solid #ddd; user-select: none;
+}
+.wallet-addr:hover { background: #e0e0e0; }
+.wallet-menu {
+    display: none; position: absolute; background: white; border: 1px solid #ddd;
+    border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 10;
+    min-width: 180px; padding: 4px 0; margin-top: 4px;
+}
+.wallet-menu.open { display: block; }
+.wallet-menu-item {
+    display: block; width: 100%; padding: 8px 14px; font-size: 12px;
+    font-family: monospace; background: none; border: none; text-align: left;
+    cursor: pointer; color: #111;
+}
+.wallet-menu-item:hover { background: #f0f0f0; }
+.wallet-menu-item.active { font-weight: 700; }
+.wallet-menu-sep { height: 1px; background: #e5e5e5; margin: 4px 0; }
+.wallet-menu-item.new-wallet { font-family: -apple-system, system-ui; color: #007aff; }
+
+.balances { display: flex; gap: 20px; margin: 10px 0; }
+.bal { font-size: 14px; font-family: monospace; font-weight: 600; }
+.bal span { font-weight: 400; color: #666; font-family: -apple-system, system-ui; font-size: 12px; }
+
+.actions { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+.btn {
+    font-size: 12px; padding: 6px 14px; border-radius: 8px; border: 1px solid #ddd;
+    background: white; cursor: pointer; font-family: -apple-system, system-ui;
+    display: flex; align-items: center; gap: 4px;
+}
+.btn:hover { background: #f0f0f0; }
+.btn.primary { background: #111; color: white; border-color: #111; }
+.btn.primary:hover { background: #333; }
+
+.network-pill {
+    font-size: 11px; padding: 3px 10px; border-radius: 999px;
+    background: #f0f0f0; border: 1px solid #ddd; cursor: pointer;
+    font-family: -apple-system, system-ui; color: #666; position: relative;
+}
+.network-pill:hover { background: #e5e5e5; }
+.network-menu {
+    display: none; position: absolute; right: 0; top: 100%; margin-top: 4px;
+    background: white; border: 1px solid #ddd; border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 10; min-width: 150px; padding: 4px 0;
+}
+.network-menu.open { display: block; }
+.network-menu-item {
+    display: block; width: 100%; padding: 8px 14px; font-size: 12px;
+    background: none; border: none; text-align: left; cursor: pointer; color: #111;
+}
+.network-menu-item:hover { background: #f0f0f0; }
+.network-menu-item.active { font-weight: 700; }
+
+.top-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.spacer { flex: 1; }
+
+.divider { height: 1px; background: #e5e5e5; margin: 16px 0; }
+
+/* Activity section */
+.card { background: white; border-radius: 10px; padding: 12px; border: 1px solid #e5e5e5; }
+.row { display: flex; align-items: center; padding: 6px 0; }
+.row + .row { border-top: 1px solid #f0f0f0; }
+.icon { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 10px; font-size: 14px; flex-shrink: 0; }
+.icon.in { background: #dcfce7; color: #16a34a; }
+.icon.out { background: #fff7ed; color: #ea580c; }
+.details { flex: 1; min-width: 0; }
+.label { font-size: 13px; font-weight: 500; }
+.addr { font-size: 10px; color: #999; font-family: monospace; }
+.amount { text-align: right; flex-shrink: 0; }
+.amount .val { font-size: 13px; font-weight: 600; font-family: monospace; }
+.amount .time { font-size: 10px; color: #999; }
+.empty { text-align: center; padding: 32px 0; color: #999; font-size: 13px; }
+#loading { text-align: center; padding: 32px 0; color: #999; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div id="wallet">
+    <div class="top-row">
+        <div style="position: relative;">
+            <div class="wallet-addr" onclick="toggleWalletMenu(event)">
+                <span id="wallet-address">No Wallet</span> ▾
+            </div>
+            <div class="wallet-menu" id="wallet-menu"></div>
+        </div>
+        <div class="spacer"></div>
+        <div style="position: relative;">
+            <div class="network-pill" onclick="toggleNetworkMenu(event)">
+                <span id="network-name">...</span> ▾
+                <div class="network-menu" id="network-menu"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="balances">
+        <div class="bal"><span id="eth-bal">...</span> <span>ETH</span></div>
+        <div class="bal"><span id="usdc-bal">...</span> <span>USDC</span></div>
+    </div>
+
+    <div class="actions">
+        <button class="btn primary" onclick="post('receive')">↓ Receive</button>
+        <button class="btn primary" onclick="post('send')">↑ Send</button>
+        <button class="btn" onclick="post('pasteWC')">🔗 WC</button>
+        <button class="btn" id="sessions-btn" style="display:none" onclick="post('showSessions')">
+            🔗 <span id="sessions-count">0</span>
+        </button>
+    </div>
+</div>
+
+<div class="divider"></div>
+
+<h3>Activity</h3>
+<div id="loading">Loading...</div>
+<div id="history"></div>
+
+<script>
+function post(action, data) {
+    var msg = { action: action };
+    if (data !== undefined) msg.data = data;
+    window.webkit.messageHandlers.wallet.postMessage(JSON.stringify(msg));
+}
+
+var _walletState = {};
+
+window.updateWallet = function(jsonStr) {
+    var s = JSON.parse(jsonStr);
+    _walletState = s;
+
+    document.getElementById('wallet-address').textContent = s.displayAddress || 'No Wallet';
+    document.getElementById('eth-bal').textContent = s.ethBalance || '...';
+    document.getElementById('usdc-bal').textContent = s.usdcBalance || '...';
+    document.getElementById('network-name').textContent = s.networkName || '...';
+
+    var sessBtn = document.getElementById('sessions-btn');
+    if (s.sessionsCount > 0) {
+        sessBtn.style.display = '';
+        document.getElementById('sessions-count').textContent = s.sessionsCount;
+    } else {
+        sessBtn.style.display = 'none';
+    }
+
+    buildWalletMenu(s.wallets || [], s.selectedIndex || 0);
+    buildNetworkMenu(s.networks || [], s.networkName || '');
+};
+
+function buildWalletMenu(wallets, selectedIndex) {
+    var menu = document.getElementById('wallet-menu');
+    var html = '';
+    wallets.forEach(function(w) {
+        var cls = 'wallet-menu-item' + (w.index === selectedIndex ? ' active' : '');
+        html += '<button class="' + cls + '" onclick="selectWallet(' + w.index + ')">' + w.display + '</button>';
+    });
+    if (wallets.length > 0) html += '<div class="wallet-menu-sep"></div>';
+    html += '<button class="wallet-menu-item new-wallet" onclick="post(\'newWallet\')">New Wallet</button>';
+    menu.innerHTML = html;
+}
+
+function buildNetworkMenu(networks, current) {
+    var menu = document.getElementById('network-menu');
+    var html = '';
+    networks.forEach(function(n) {
+        var cls = 'network-menu-item' + (n.name === current ? ' active' : '');
+        html += '<button class="' + cls + '" onclick="switchNetwork(\'' + n.raw + '\')">' + n.name + '</button>';
+    });
+    menu.innerHTML = html;
+}
+
+function selectWallet(index) {
+    closeMenus();
+    post('selectWallet', index);
+}
+
+function switchNetwork(raw) {
+    closeMenus();
+    post('switchNetwork', raw);
+}
+
+function toggleWalletMenu(e) {
+    e.stopPropagation();
+    document.getElementById('network-menu').classList.remove('open');
+    document.getElementById('wallet-menu').classList.toggle('open');
+}
+
+function toggleNetworkMenu(e) {
+    e.stopPropagation();
+    document.getElementById('wallet-menu').classList.remove('open');
+    document.getElementById('network-menu').classList.toggle('open');
+}
+
+function closeMenus() {
+    document.getElementById('wallet-menu').classList.remove('open');
+    document.getElementById('network-menu').classList.remove('open');
+}
+
+document.addEventListener('click', closeMenus);
+
+window.updateHistory = function(txListJson) {
+    var txs = JSON.parse(txListJson);
+    var container = document.getElementById('history');
+    document.getElementById('loading').style.display = 'none';
+
+    if (!txs.length) {
+        container.innerHTML = '<div class="empty">No transactions yet.</div>';
+        return;
+    }
+
+    var html = '<div class="card">';
+    txs.forEach(function(tx) {
+        var icon = tx.incoming ? 'in' : 'out';
+        var label = tx.incoming ? 'Received' : 'Sent';
+        var sign = tx.incoming ? '+' : '-';
+        html += '<div class="row">' +
+            '<div class="icon ' + icon + '">' + (tx.incoming ? '↓' : '↑') + '</div>' +
+            '<div class="details">' +
+                '<div class="label">' + label + '</div>' +
+                '<div class="addr">' + tx.address + '</div>' +
+            '</div>' +
+            '<div class="amount">' +
+                '<div class="val">' + sign + tx.value + ' ' + tx.symbol + '</div>' +
+                '<div class="time">' + tx.time + '</div>' +
+            '</div>' +
+        '</div>';
+    });
+    html += '</div>';
+    container.innerHTML = html;
+};
+</script>
+</body>
+</html>

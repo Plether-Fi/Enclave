@@ -282,25 +282,111 @@ private enum BridgeError: LocalizedError {
 }
 
 struct ActivityWebView: NSViewRepresentable {
+    var onSend: () -> Void
+    var onReceive: () -> Void
+    var onPasteWC: () -> Void
+    var onShowSessions: () -> Void
+    var onSelectWallet: (Int) -> Void
+    var onNewWallet: () -> Void
+    var onSwitchNetwork: (String) -> Void
+
     func makeNSView(context: Context) -> WKWebView {
-        let webView = WKWebView(frame: .zero)
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(context.coordinator, name: "wallet")
+
+        let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
 
-        if let url = Bundle.main.url(forResource: "activity", withExtension: "html") {
+        if let url = Bundle.main.url(forResource: "panel", withExtension: "html") {
             webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         }
         return webView
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {}
+    func updateNSView(_ nsView: WKWebView, context: Context) {
+        let c = context.coordinator
+        c.onSend = onSend
+        c.onReceive = onReceive
+        c.onPasteWC = onPasteWC
+        c.onShowSessions = onShowSessions
+        c.onSelectWallet = onSelectWallet
+        c.onNewWallet = onNewWallet
+        c.onSwitchNetwork = onSwitchNetwork
+    }
+
     func makeCoordinator() -> ActivityCoordinator { ActivityCoordinator() }
 
-    class ActivityCoordinator: NSObject, WKNavigationDelegate {
+    class ActivityCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         weak var webView: WKWebView?
 
+        var onSend: (() -> Void)?
+        var onReceive: (() -> Void)?
+        var onPasteWC: (() -> Void)?
+        var onShowSessions: (() -> Void)?
+        var onSelectWallet: ((Int) -> Void)?
+        var onNewWallet: (() -> Void)?
+        var onSwitchNetwork: ((String) -> Void)?
+
+        override init() {
+            super.init()
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(handleWalletStateChange),
+                name: .walletStateDidChange, object: nil
+            )
+        }
+
+        @objc private func handleWalletStateChange() {
+            updateWalletState()
+        }
+
+        func userContentController(_ userContentController: WKUserContentController,
+                                   didReceive message: WKScriptMessage) {
+            guard let body = message.body as? String,
+                  let data = body.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let action = json["action"] as? String else { return }
+
+            switch action {
+            case "send": onSend?()
+            case "receive": onReceive?()
+            case "pasteWC": onPasteWC?()
+            case "showSessions": onShowSessions?()
+            case "newWallet": onNewWallet?()
+            case "selectWallet":
+                if let index = json["data"] as? Int { onSelectWallet?(index) }
+            case "switchNetwork":
+                if let raw = json["data"] as? String { onSwitchNetwork?(raw) }
+            default: break
+            }
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            updateWalletState()
             loadTransactionHistory()
+        }
+
+        func updateWalletState() {
+            let wallets = EnclaveEngine.shared.wallets.map { w -> [String: Any] in
+                ["index": w.index, "display": w.displayAddress]
+            }
+            let networks = Network.allCases.map { n -> [String: String] in
+                ["name": n.displayName, "raw": n.rawValue]
+            }
+            let state: [String: Any] = [
+                "displayAddress": EnclaveEngine.shared.currentWallet?.displayAddress ?? "No Wallet",
+                "ethBalance": UserDefaults.standard.string(forKey: "cachedEthBalance") ?? "...",
+                "usdcBalance": UserDefaults.standard.string(forKey: "cachedUsdcBalance") ?? "...",
+                "networkName": Config.activeNetwork.displayName,
+                "sessionsCount": WalletConnectService.shared.sessions.count,
+                "selectedIndex": EnclaveEngine.shared.selectedIndex,
+                "wallets": wallets,
+                "networks": networks,
+            ]
+            guard let jsonData = try? JSONSerialization.data(withJSONObject: state),
+                  let jsonString = String(data: jsonData, encoding: .utf8) else { return }
+            let escaped = jsonString.replacingOccurrences(of: "'", with: "\\'")
+            webView?.evaluateJavaScript("window.updateWallet('\(escaped)');", completionHandler: nil)
         }
 
         func loadTransactionHistory() {
@@ -329,4 +415,8 @@ struct ActivityWebView: NSViewRepresentable {
             }
         }
     }
+}
+
+extension Notification.Name {
+    static let walletStateDidChange = Notification.Name("walletStateDidChange")
 }

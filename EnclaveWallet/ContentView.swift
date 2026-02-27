@@ -6,10 +6,6 @@ import os
 private let log = Logger(subsystem: "com.plether.EnclaveWallet", category: "UI")
 
 struct ContentView: View {
-    @State private var wallets: [Wallet] = EnclaveEngine.shared.wallets
-    @State private var selectedAddress: String = EnclaveEngine.shared.currentWallet?.displayAddress ?? "No Wallet"
-    @State private var ethBalance: String = "..."
-    @State private var usdcBalance: String = "..."
     @State private var showSend = false
     @State private var showReceive = false
     @State private var activeURL = "kitchen_sink"
@@ -26,15 +22,34 @@ struct ContentView: View {
             HStack(spacing: 0) {
                 appSidebar
                 Divider()
-                VStack(spacing: 0) {
-                    toolbar
-                    balanceBar
-                    Divider()
-                    WalledGardenWebView(urlString: activeURL, currentURL: $currentURL)
-                }
+                WalledGardenWebView(urlString: activeURL, currentURL: $currentURL)
             }
             .frame(minWidth: 300)
-            ActivityWebView()
+            ActivityWebView(
+                onSend: { showSend = true },
+                onReceive: { showReceive = true },
+                onPasteWC: { pasteWCURI() },
+                onShowSessions: { showSessions = true },
+                onSelectWallet: { index in
+                    EnclaveEngine.shared.selectWallet(at: index)
+                    refreshWallets()
+                },
+                onNewWallet: {
+                    do {
+                        try EnclaveEngine.shared.generateKey()
+                        refreshWallets()
+                    } catch {
+                        log.error("Key generation failed: \(error.localizedDescription, privacy: .public)")
+                    }
+                },
+                onSwitchNetwork: { raw in
+                    if let network = Network(rawValue: raw) {
+                        Config.activeNetwork = network
+                        refreshBalances()
+                        activityRefreshId = UUID()
+                    }
+                }
+            )
                 .id(activityRefreshId)
                 .frame(minWidth: 220, idealWidth: 280, maxWidth: 360)
         }
@@ -78,9 +93,8 @@ struct ContentView: View {
     }
 
     private func refreshWallets() {
-        wallets = EnclaveEngine.shared.wallets
-        selectedAddress = EnclaveEngine.shared.currentWallet?.displayAddress ?? "No Wallet"
         refreshBalances()
+        notifyActivityWebView()
         activityRefreshId = UUID()
     }
 
@@ -95,8 +109,9 @@ struct ContentView: View {
                     owner: wallet.address
                 )
                 await MainActor.run {
-                    ethBalance = eth.ethFormatted
-                    usdcBalance = usdc.usdcFormatted
+                    UserDefaults.standard.set(eth.ethFormatted, forKey: "cachedEthBalance")
+                    UserDefaults.standard.set(usdc.usdcFormatted, forKey: "cachedUsdcBalance")
+                    notifyActivityWebView()
                 }
             } catch {
                 log.error("Balance fetch failed: \(error.localizedDescription, privacy: .public)")
@@ -104,97 +119,8 @@ struct ContentView: View {
         }
     }
 
-    private var toolbar: some View {
-        HStack(spacing: 8) {
-            Menu {
-                ForEach(wallets, id: \.index) { wallet in
-                    Button(wallet.displayAddress) {
-                        EnclaveEngine.shared.selectWallet(at: wallet.index)
-                        refreshWallets()
-                    }
-                }
-                if !wallets.isEmpty { Divider() }
-                Button("New Wallet") {
-                    do {
-                        try EnclaveEngine.shared.generateKey()
-                        refreshWallets()
-                    } catch {
-                        log.error("Key generation failed: \(error.localizedDescription, privacy: .public)")
-                    }
-                }
-            } label: {
-                Text(selectedAddress)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.black.opacity(0.1))
-                    .clipShape(Capsule())
-            }
-
-            Button { showReceive = true } label: {
-                Label("Receive", systemImage: "arrow.down.circle")
-            }
-
-            Button { showSend = true } label: {
-                Label("Send", systemImage: "arrow.up.circle")
-            }
-
-            Spacer()
-
-            Button {
-                pasteWCURI()
-            } label: {
-                Label("WC", systemImage: "qrcode")
-            }
-            .help("Paste WalletConnect URI from clipboard")
-
-            if !wcService.sessions.isEmpty {
-                Button {
-                    showSessions = true
-                } label: {
-                    Label("\(wcService.sessions.count)", systemImage: "link.circle")
-                }
-                .help("Active WalletConnect sessions")
-            }
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(Color.black)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-    }
-
-    private var balanceBar: some View {
-        HStack(spacing: 24) {
-            HStack(spacing: 4) {
-                Text(ethBalance).font(.system(.body, design: .monospaced)).bold()
-                Text("ETH").foregroundColor(.secondary)
-            }
-            HStack(spacing: 4) {
-                Text(usdcBalance).font(.system(.body, design: .monospaced)).bold()
-                Text("USDC").foregroundColor(.secondary)
-            }
-            Spacer()
-            Menu {
-                ForEach(Network.allCases, id: \.rawValue) { network in
-                    Button(network.displayName) {
-                        Config.activeNetwork = network
-                        refreshBalances()
-                        activityRefreshId = UUID()
-                    }
-                }
-            } label: {
-                Text(Config.activeNetwork.displayName)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.secondary.opacity(0.1))
-                    .clipShape(Capsule())
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+    private func notifyActivityWebView() {
+        NotificationCenter.default.post(name: .walletStateDidChange, object: nil)
     }
 
     private var appSidebar: some View {

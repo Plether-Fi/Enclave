@@ -306,7 +306,6 @@ struct ActivityWebView: NSViewRepresentable {
     var onSend: () -> Void
     var onReceive: () -> Void
     var onPasteWC: () -> Void
-    var onShowSessions: () -> Void
     var onSelectWallet: (Int) -> Void
     var onNewWallet: () -> Void
 
@@ -329,7 +328,6 @@ struct ActivityWebView: NSViewRepresentable {
         c.onSend = onSend
         c.onReceive = onReceive
         c.onPasteWC = onPasteWC
-        c.onShowSessions = onShowSessions
         c.onSelectWallet = onSelectWallet
         c.onNewWallet = onNewWallet
     }
@@ -342,7 +340,6 @@ struct ActivityWebView: NSViewRepresentable {
         var onSend: (() -> Void)?
         var onReceive: (() -> Void)?
         var onPasteWC: (() -> Void)?
-        var onShowSessions: (() -> Void)?
         var onSelectWallet: ((Int) -> Void)?
         var onNewWallet: (() -> Void)?
 
@@ -369,7 +366,6 @@ struct ActivityWebView: NSViewRepresentable {
             case "send": onSend?()
             case "receive": onReceive?()
             case "pasteWC": onPasteWC?()
-            case "showSessions": onShowSessions?()
             case "newWallet": onNewWallet?()
             case "selectWallet":
                 if let index = json["data"] as? Int { onSelectWallet?(index) }

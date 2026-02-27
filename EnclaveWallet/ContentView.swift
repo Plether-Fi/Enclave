@@ -78,7 +78,6 @@ struct ContentView: View {
                     onSend: { showSend = true },
                     onReceive: { showReceive = true },
                     onPasteWC: { pasteWCURI() },
-                    onShowSessions: { showSessions = true },
                     onSelectWallet: { index in
                         EnclaveEngine.shared.selectWallet(at: index)
                         refreshWallets()
@@ -244,7 +243,7 @@ struct ContentView: View {
             }
             .frame(height: 28)
 
-            Button {} label: {
+            Button { showSessions = true } label: {
                 Image(systemName: "gearshape").font(.system(size: 16, weight: .medium))
             }
             .buttonStyle(.borderless)

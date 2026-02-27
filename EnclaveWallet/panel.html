@@ -11,18 +11,18 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
 /* Wallet section */
 #wallet { margin-bottom: 20px; }
 .wallet-addr {
-    display: inline-flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 8px;
     background: #eee; padding: 6px 12px; border-radius: 999px; cursor: pointer;
     border: 1px solid #ddd; user-select: none;
 }
 .wallet-addr:hover { background: #e0e0e0; }
 #wallet-address { display: flex; align-items: center; gap: 8px; }
-.blockie { width: 32px; height: 32px; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
-.wallet-menu-item .blockie { width: 24px; height: 24px; margin-right: 0; flex-shrink: 0; }
+.blockie { width: 40px; height: 40px; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
+.wallet-menu-item .blockie { width: 40px; height: 40px; margin-right: 0; flex-shrink: 0; }
 .wallet-menu {
     display: none; position: absolute; background: white; border: 1px solid #ddd;
     border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 10;
-    min-width: 180px; padding: 4px 0; margin-top: 4px;
+    left: 0; right: 0; padding: 4px 0; margin-top: 4px;
 }
 .wallet-menu.open { display: block; }
 .wallet-menu-item {
@@ -60,7 +60,13 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
 .btn.primary { background: #111; color: white; border-color: #111; }
 .btn.primary:hover { background: #333; }
 
-.top-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.top-row { display: flex; align-items: center; gap: 8px; }
+.btn-qr {
+    width: 36px; height: 36px; border-radius: 50%; border: 1px solid #ddd;
+    background: white; cursor: pointer; display: flex; align-items: center;
+    justify-content: center; color: #111; flex-shrink: 0;
+}
+.btn-qr:hover { background: #f0f0f0; }
 
 .divider { height: 1px; background: #e5e5e5; margin: 16px 0; }
 
@@ -85,12 +91,17 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
 
 <div id="wallet">
     <div class="top-row">
-        <div style="position: relative;">
+        <div style="position: relative; flex: 1; min-width: 0;">
             <div class="wallet-addr" onclick="toggleWalletMenu(event)">
-                <span id="wallet-address">No Wallet</span> ▾
+                <span id="wallet-address">No Wallet</span> <span style="margin-left: auto;">▾</span>
             </div>
             <div class="wallet-menu" id="wallet-menu"></div>
         </div>
+        <button class="btn-qr" onclick="post('receive')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><path d="M14 14h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2zm0-2h-2v-2"/>
+            </svg>
+        </button>
     </div>
 
     <div class="balances">
@@ -99,12 +110,8 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
     </div>
 
     <div class="actions">
-        <button class="btn primary" onclick="post('receive')">↓ Receive</button>
         <button class="btn primary" onclick="post('send')">↑ Send</button>
         <button class="btn" onclick="post('pasteWC')">🔗 WC</button>
-        <button class="btn" id="sessions-btn" style="display:none" onclick="post('showSessions')">
-            🔗 <span id="sessions-count">0</span>
-        </button>
     </div>
 </div>
 
@@ -195,7 +202,7 @@ window.updateWallet = function(jsonStr) {
 
     var addrEl = document.getElementById('wallet-address');
     if (s.address) {
-        addrEl.innerHTML = '<img class="blockie" src="' + makeJazzicon(s.address, 32) + '">' +
+        addrEl.innerHTML = '<img class="blockie" src="' + makeJazzicon(s.address, 40) + '">' +
             '<span class="pill-info"><span class="pill-name">' + (s.name || s.displayAddress) + '</span>' +
             '<span class="pill-addr">' + (s.displayAddress || '') + '</span></span>';
     } else {
@@ -203,14 +210,6 @@ window.updateWallet = function(jsonStr) {
     }
     document.getElementById('eth-bal').textContent = s.ethBalance || '...';
     document.getElementById('usdc-bal').textContent = s.usdcBalance || '...';
-
-    var sessBtn = document.getElementById('sessions-btn');
-    if (s.sessionsCount > 0) {
-        sessBtn.style.display = '';
-        document.getElementById('sessions-count').textContent = s.sessionsCount;
-    } else {
-        sessBtn.style.display = 'none';
-    }
 
     buildWalletMenu(s.wallets || [], s.selectedIndex || 0);
 };
@@ -224,7 +223,7 @@ function buildWalletMenu(wallets, selectedIndex) {
         btn.onclick = function() { selectWallet(w.index); };
         btn.ondblclick = function(e) { e.stopPropagation(); startRename(btn, w); };
         var img = '';
-        if (w.address) img = '<img class="blockie" src="' + makeJazzicon(w.address, 32) + '">';
+        if (w.address) img = '<img class="blockie" src="' + makeJazzicon(w.address, 40) + '">';
         btn.innerHTML = img + '<span class="wm-info"><span class="wm-name">' + (w.name || w.display) +
             '</span><span class="wm-addr">' + w.display + '</span></span>';
         menu.appendChild(btn);

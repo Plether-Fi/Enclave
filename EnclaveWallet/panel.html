@@ -45,27 +45,7 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
 .btn.primary { background: #111; color: white; border-color: #111; }
 .btn.primary:hover { background: #333; }
 
-.network-pill {
-    font-size: 11px; padding: 3px 10px; border-radius: 999px;
-    background: #f0f0f0; border: 1px solid #ddd; cursor: pointer;
-    font-family: -apple-system, system-ui; color: #666; position: relative;
-}
-.network-pill:hover { background: #e5e5e5; }
-.network-menu {
-    display: none; position: absolute; right: 0; top: 100%; margin-top: 4px;
-    background: white; border: 1px solid #ddd; border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 10; min-width: 150px; padding: 4px 0;
-}
-.network-menu.open { display: block; }
-.network-menu-item {
-    display: block; width: 100%; padding: 8px 14px; font-size: 12px;
-    background: none; border: none; text-align: left; cursor: pointer; color: #111;
-}
-.network-menu-item:hover { background: #f0f0f0; }
-.network-menu-item.active { font-weight: 700; }
-
 .top-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.spacer { flex: 1; }
 
 .divider { height: 1px; background: #e5e5e5; margin: 16px 0; }
 
@@ -95,13 +75,6 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
                 <span id="wallet-address">No Wallet</span> ▾
             </div>
             <div class="wallet-menu" id="wallet-menu"></div>
-        </div>
-        <div class="spacer"></div>
-        <div style="position: relative;">
-            <div class="network-pill" onclick="toggleNetworkMenu(event)">
-                <span id="network-name">...</span> ▾
-                <div class="network-menu" id="network-menu"></div>
-            </div>
         </div>
     </div>
 
@@ -142,7 +115,6 @@ window.updateWallet = function(jsonStr) {
     document.getElementById('wallet-address').textContent = s.displayAddress || 'No Wallet';
     document.getElementById('eth-bal').textContent = s.ethBalance || '...';
     document.getElementById('usdc-bal').textContent = s.usdcBalance || '...';
-    document.getElementById('network-name').textContent = s.networkName || '...';
 
     var sessBtn = document.getElementById('sessions-btn');
     if (s.sessionsCount > 0) {
@@ -153,7 +125,6 @@ window.updateWallet = function(jsonStr) {
     }
 
     buildWalletMenu(s.wallets || [], s.selectedIndex || 0);
-    buildNetworkMenu(s.networks || [], s.networkName || '');
 };
 
 function buildWalletMenu(wallets, selectedIndex) {
@@ -168,41 +139,18 @@ function buildWalletMenu(wallets, selectedIndex) {
     menu.innerHTML = html;
 }
 
-function buildNetworkMenu(networks, current) {
-    var menu = document.getElementById('network-menu');
-    var html = '';
-    networks.forEach(function(n) {
-        var cls = 'network-menu-item' + (n.name === current ? ' active' : '');
-        html += '<button class="' + cls + '" onclick="switchNetwork(\'' + n.raw + '\')">' + n.name + '</button>';
-    });
-    menu.innerHTML = html;
-}
-
 function selectWallet(index) {
     closeMenus();
     post('selectWallet', index);
 }
 
-function switchNetwork(raw) {
-    closeMenus();
-    post('switchNetwork', raw);
-}
-
 function toggleWalletMenu(e) {
     e.stopPropagation();
-    document.getElementById('network-menu').classList.remove('open');
     document.getElementById('wallet-menu').classList.toggle('open');
-}
-
-function toggleNetworkMenu(e) {
-    e.stopPropagation();
-    document.getElementById('wallet-menu').classList.remove('open');
-    document.getElementById('network-menu').classList.toggle('open');
 }
 
 function closeMenus() {
     document.getElementById('wallet-menu').classList.remove('open');
-    document.getElementById('network-menu').classList.remove('open');
 }
 
 document.addEventListener('click', closeMenus);

@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 import WalletConnectSign
 import BigInt
 import os
@@ -14,44 +15,46 @@ struct ContentView: View {
     @State private var activityRefreshId = UUID()
     @State private var showSessions = false
     @State private var lastPasteboardCount = NSPasteboard.general.changeCount
+    @State private var webViewCoordinator: WalledGardenWebView.Coordinator?
 
     @ObservedObject private var wcService = WalletConnectService.shared
 
     var body: some View {
-        HSplitView {
-            HStack(spacing: 0) {
-                appSidebar
-                Divider()
-                WalledGardenWebView(urlString: activeURL, currentURL: $currentURL)
-            }
-            .frame(minWidth: 300)
-            ActivityWebView(
-                onSend: { showSend = true },
-                onReceive: { showReceive = true },
-                onPasteWC: { pasteWCURI() },
-                onShowSessions: { showSessions = true },
-                onSelectWallet: { index in
-                    EnclaveEngine.shared.selectWallet(at: index)
-                    refreshWallets()
-                },
-                onNewWallet: {
-                    do {
-                        try EnclaveEngine.shared.generateKey()
-                        refreshWallets()
-                    } catch {
-                        log.error("Key generation failed: \(error.localizedDescription, privacy: .public)")
-                    }
-                },
-                onSwitchNetwork: { raw in
-                    if let network = Network(rawValue: raw) {
-                        Config.activeNetwork = network
-                        refreshBalances()
-                        activityRefreshId = UUID()
-                    }
+        VStack(spacing: 0) {
+            topBar
+            Divider()
+            HSplitView {
+                HStack(spacing: 0) {
+                    appSidebar
+                    Divider()
+                    WalledGardenWebView(
+                        urlString: activeURL,
+                        currentURL: $currentURL,
+                        coordinatorRef: $webViewCoordinator
+                    )
                 }
-            )
-                .id(activityRefreshId)
-                .frame(minWidth: 220, idealWidth: 280, maxWidth: 360)
+                .frame(minWidth: 300)
+                ActivityWebView(
+                    onSend: { showSend = true },
+                    onReceive: { showReceive = true },
+                    onPasteWC: { pasteWCURI() },
+                    onShowSessions: { showSessions = true },
+                    onSelectWallet: { index in
+                        EnclaveEngine.shared.selectWallet(at: index)
+                        refreshWallets()
+                    },
+                    onNewWallet: {
+                        do {
+                            try EnclaveEngine.shared.generateKey()
+                            refreshWallets()
+                        } catch {
+                            log.error("Key generation failed: \(error.localizedDescription, privacy: .public)")
+                        }
+                    }
+                )
+                    .id(activityRefreshId)
+                    .frame(minWidth: 220, idealWidth: 280, maxWidth: 360)
+            }
         }
         .sheet(isPresented: $showSend) {
             SendView(onComplete: {
@@ -121,6 +124,79 @@ struct ContentView: View {
 
     private func notifyActivityWebView() {
         NotificationCenter.default.post(name: .walletStateDidChange, object: nil)
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Button { webViewCoordinator?.webView?.goBack() } label: {
+                    Image(systemName: "chevron.left").font(.system(size: 16, weight: .medium))
+                }
+                .buttonStyle(.borderless)
+
+                Button { webViewCoordinator?.webView?.goForward() } label: {
+                    Image(systemName: "chevron.right").font(.system(size: 16, weight: .medium))
+                }
+                .buttonStyle(.borderless)
+
+                Button { webViewCoordinator?.webView?.reload() } label: {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 15, weight: .medium))
+                }
+                .buttonStyle(.borderless)
+            }
+            .frame(width: 130, alignment: .leading)
+
+            GeometryReader { geo in
+                HStack(spacing: 0) {
+                    Menu {
+                        ForEach(Network.allCases, id: \.self) { network in
+                            Button {
+                                Config.activeNetwork = network
+                                refreshBalances()
+                                activityRefreshId = UUID()
+                            } label: {
+                                HStack {
+                                    Text(network.displayName)
+                                    if network == Config.activeNetwork {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Text(Config.activeNetwork.displayName)
+                            .font(.system(size: 13))
+                            .padding(.horizontal, 12)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+
+                    Divider()
+
+                    Text(currentURL)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .padding(.horizontal, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(width: geo.size.width * 0.5, height: 28)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3), lineWidth: 1))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            }
+            .frame(height: 28)
+
+            Button {} label: {
+                Image(systemName: "gearshape").font(.system(size: 16, weight: .medium))
+            }
+            .buttonStyle(.borderless)
+            .frame(width: 44, alignment: .trailing)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     private var appSidebar: some View {

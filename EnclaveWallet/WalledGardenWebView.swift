@@ -9,6 +9,7 @@ private let log = Logger(subsystem: "com.plether.EnclaveWallet", category: "WebV
 struct WalledGardenWebView: NSViewRepresentable {
     var urlString: String
     @Binding var currentURL: String
+    @Binding var coordinatorRef: Coordinator?
 
     func makeNSView(context: Context) -> NSView {
         NSView()
@@ -16,6 +17,7 @@ struct WalledGardenWebView: NSViewRepresentable {
 
     func updateNSView(_ container: NSView, context: Context) {
         let coordinator = context.coordinator
+        if coordinatorRef !== coordinator { coordinatorRef = coordinator }
         if coordinator.activeURL == urlString { return }
         coordinator.activeURL = urlString
 
@@ -32,6 +34,7 @@ struct WalledGardenWebView: NSViewRepresentable {
         webView.autoresizingMask = [.width, .height]
         container.addSubview(webView)
         coordinator.webView = webView
+        currentURL = webView.url?.absoluteString ?? urlString
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(currentURL: $currentURL) }
@@ -288,7 +291,6 @@ struct ActivityWebView: NSViewRepresentable {
     var onShowSessions: () -> Void
     var onSelectWallet: (Int) -> Void
     var onNewWallet: () -> Void
-    var onSwitchNetwork: (String) -> Void
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -312,7 +314,6 @@ struct ActivityWebView: NSViewRepresentable {
         c.onShowSessions = onShowSessions
         c.onSelectWallet = onSelectWallet
         c.onNewWallet = onNewWallet
-        c.onSwitchNetwork = onSwitchNetwork
     }
 
     func makeCoordinator() -> ActivityCoordinator { ActivityCoordinator() }
@@ -326,7 +327,6 @@ struct ActivityWebView: NSViewRepresentable {
         var onShowSessions: (() -> Void)?
         var onSelectWallet: ((Int) -> Void)?
         var onNewWallet: (() -> Void)?
-        var onSwitchNetwork: ((String) -> Void)?
 
         override init() {
             super.init()
@@ -355,8 +355,6 @@ struct ActivityWebView: NSViewRepresentable {
             case "newWallet": onNewWallet?()
             case "selectWallet":
                 if let index = json["data"] as? Int { onSelectWallet?(index) }
-            case "switchNetwork":
-                if let raw = json["data"] as? String { onSwitchNetwork?(raw) }
             default: break
             }
         }
@@ -370,9 +368,6 @@ struct ActivityWebView: NSViewRepresentable {
             let wallets = EnclaveEngine.shared.wallets.map { w -> [String: Any] in
                 ["index": w.index, "display": w.displayAddress]
             }
-            let networks = Network.allCases.map { n -> [String: String] in
-                ["name": n.displayName, "raw": n.rawValue]
-            }
             let state: [String: Any] = [
                 "displayAddress": EnclaveEngine.shared.currentWallet?.displayAddress ?? "No Wallet",
                 "ethBalance": UserDefaults.standard.string(forKey: "cachedEthBalance") ?? "...",
@@ -381,7 +376,6 @@ struct ActivityWebView: NSViewRepresentable {
                 "sessionsCount": WalletConnectService.shared.sessions.count,
                 "selectedIndex": EnclaveEngine.shared.selectedIndex,
                 "wallets": wallets,
-                "networks": networks,
             ]
             guard let jsonData = try? JSONSerialization.data(withJSONObject: state),
                   let jsonString = String(data: jsonData, encoding: .utf8) else { return }

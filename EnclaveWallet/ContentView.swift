@@ -135,6 +135,7 @@ struct ContentView: View {
         .background(WindowAccessor())
         .onReceive(NotificationCenter.default.publisher(for: .networkDidChange)) { _ in
             refreshBalances()
+            notifyActivityWebView()
             activityRefreshId = UUID()
         }
     }
@@ -173,7 +174,7 @@ struct ContentView: View {
                 await MainActor.run {
                     UserDefaults.standard.set(eth.ethFormatted, forKey: "cachedEthBalance")
                     UserDefaults.standard.set(usdc.usdcFormatted, forKey: "cachedUsdcBalance")
-                    notifyActivityWebView()
+                    NotificationCenter.default.post(name: .balanceDidUpdate, object: nil)
                 }
             } catch {
                 log.error("Balance fetch failed: \(error.localizedDescription, privacy: .public)")

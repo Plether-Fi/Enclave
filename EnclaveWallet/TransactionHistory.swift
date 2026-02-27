@@ -14,6 +14,16 @@ nonisolated struct Transaction: Identifiable, Sendable {
     let timestamp: Date
     let isIncoming: Bool
     let status: String
+    let isContractCreation: Bool
+
+    init(id: String, hash: String, from: String, to: String, value: String,
+         tokenSymbol: String, timestamp: Date, isIncoming: Bool, status: String,
+         isContractCreation: Bool = false) {
+        self.id = id; self.hash = hash; self.from = from; self.to = to
+        self.value = value; self.tokenSymbol = tokenSymbol; self.timestamp = timestamp
+        self.isIncoming = isIncoming; self.status = status
+        self.isContractCreation = isContractCreation
+    }
 
     var displayAddress: String {
         let addr = isIncoming ? from : to
@@ -45,8 +55,9 @@ actor TransactionHistoryService {
         async let normalTxs = fetchNormalTransactions(address: address, network: network)
         async let internalTxs = fetchInternalTransactions(address: address, network: network)
         async let tokenTxs = fetchTokenTransactions(address: address, network: network)
+        async let creationTx = fetchContractCreation(address: address, network: network)
 
-        let remote = await normalTxs + internalTxs + tokenTxs
+        let remote = await normalTxs + internalTxs + tokenTxs + creationTx
         let remoteHashes = Set(remote.map { $0.hash })
 
         let local = loadLocalOnly(address: address).filter { !remoteHashes.contains($0.hash) }
@@ -153,18 +164,23 @@ actor TransactionHistoryService {
                       let timestamp = TimeInterval(timestampStr),
                       let isError = tx["isError"] as? String else { return nil }
 
-                guard let bigValue = BigUInt(value, radix: 10), bigValue > 0 else { return nil }
+                let txType = tx["type"] as? String ?? ""
+                let isCreate = txType == "create" || txType == "create2"
+
+                guard let bigValue = BigUInt(value, radix: 10) else { return nil }
+                guard bigValue > 0 || isCreate else { return nil }
 
                 return Transaction(
                     id: "\(hash)-int-\(from)-\(to)-\(value)",
                     hash: hash,
                     from: from,
                     to: to,
-                    value: Wei(bigUInt: bigValue).ethFormatted,
-                    tokenSymbol: "ETH",
+                    value: isCreate ? "" : Wei(bigUInt: bigValue).ethFormatted,
+                    tokenSymbol: isCreate ? "" : "ETH",
                     timestamp: Date(timeIntervalSince1970: timestamp),
                     isIncoming: to.lowercased() == lowerAddress,
-                    status: isError == "0" ? "confirmed" : "failed"
+                    status: isError == "0" ? "confirmed" : "failed",
+                    isContractCreation: isCreate
                 )
             }
         } catch {
@@ -214,6 +230,44 @@ actor TransactionHistoryService {
             }
         } catch {
             log.error("Failed to fetch token txs: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
+    private func fetchContractCreation(address: String, network: Network) async -> [Transaction] {
+        var urlString = "\(network.blockExplorerAPI)&module=contract&action=getcontractcreation&contractaddresses=\(address)"
+        if !Secrets.arbiscanAPIKey.isEmpty {
+            urlString += "&apikey=\(Secrets.arbiscanAPIKey)"
+        }
+
+        guard let url = URL(string: urlString) else { return [] }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let result = json["result"] as? [[String: Any]] else { return [] }
+
+            return result.compactMap { entry -> Transaction? in
+                guard let hash = entry["txHash"] as? String,
+                      let creator = entry["contractCreator"] as? String,
+                      let timestampStr = entry["timestamp"] as? String,
+                      let timestamp = TimeInterval(timestampStr) else { return nil }
+
+                return Transaction(
+                    id: "\(hash)-create",
+                    hash: hash,
+                    from: creator,
+                    to: address,
+                    value: "",
+                    tokenSymbol: "",
+                    timestamp: Date(timeIntervalSince1970: timestamp),
+                    isIncoming: true,
+                    status: "confirmed",
+                    isContractCreation: true
+                )
+            }
+        } catch {
+            log.error("Failed to fetch contract creation: \(error.localizedDescription, privacy: .public)")
             return []
         }
     }

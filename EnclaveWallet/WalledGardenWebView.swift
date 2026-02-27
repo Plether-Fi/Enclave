@@ -387,11 +387,19 @@ struct ActivityWebView: NSViewRepresentable {
                 self, selector: #selector(handleWalletStateChange),
                 name: .walletStateDidChange, object: nil
             )
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(handleBalanceUpdate),
+                name: .balanceDidUpdate, object: nil
+            )
         }
 
         @objc private func handleWalletStateChange() {
             updateWalletState()
             loadTransactionHistory()
+        }
+
+        @objc private func handleBalanceUpdate() {
+            updateWalletState()
         }
 
         func userContentController(_ userContentController: WKUserContentController,
@@ -459,6 +467,7 @@ struct ActivityWebView: NSViewRepresentable {
                         "value": tx.value,
                         "symbol": tx.tokenSymbol,
                         "time": timeStr,
+                        "contractCreation": tx.isContractCreation,
                     ]
                 }
                 guard let jsonData = try? JSONSerialization.data(withJSONObject: jsonItems),
@@ -475,5 +484,6 @@ struct ActivityWebView: NSViewRepresentable {
 
 extension Notification.Name {
     static let walletStateDidChange = Notification.Name("walletStateDidChange")
+    static let balanceDidUpdate = Notification.Name("balanceDidUpdate")
     static let networkDidChange = Notification.Name("networkDidChange")
 }

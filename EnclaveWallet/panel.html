@@ -300,20 +300,31 @@ window.updateHistory = function(txListJson) {
 
     var html = '<div class="card">';
     txs.forEach(function(tx) {
-        var icon = tx.incoming ? 'in' : 'out';
-        var label = tx.incoming ? 'Received' : 'Sent';
-        var sign = tx.incoming ? '+' : '-';
-        html += '<div class="row">' +
-            '<div class="icon ' + icon + '">' + (tx.incoming ? '↓' : '↑') + '</div>' +
-            '<div class="details">' +
-                '<div class="label">' + label + '</div>' +
-                '<div class="addr">' + tx.address + '</div>' +
-            '</div>' +
-            '<div class="amount">' +
-                '<div class="val">' + sign + tx.value + ' ' + tx.symbol + '</div>' +
-                '<div class="time">' + tx.time + '</div>' +
-            '</div>' +
-        '</div>';
+        if (tx.contractCreation) {
+            html += '<div class="row">' +
+                '<div class="icon" style="background:#e8f5e9;color:#2e7d32">+</div>' +
+                '<div class="details">' +
+                    '<div class="label">Wallet Deployed</div>' +
+                    '<div class="addr">' + tx.address + '</div>' +
+                '</div>' +
+                '<div class="amount"><div class="time">' + tx.time + '</div></div>' +
+            '</div>';
+        } else {
+            var icon = tx.incoming ? 'in' : 'out';
+            var label = tx.incoming ? 'Received' : 'Sent';
+            var sign = tx.incoming ? '+' : '-';
+            html += '<div class="row">' +
+                '<div class="icon ' + icon + '">' + (tx.incoming ? '↓' : '↑') + '</div>' +
+                '<div class="details">' +
+                    '<div class="label">' + label + '</div>' +
+                    '<div class="addr">' + tx.address + '</div>' +
+                '</div>' +
+                '<div class="amount">' +
+                    '<div class="val">' + sign + tx.value + ' ' + tx.symbol + '</div>' +
+                    '<div class="time">' + tx.time + '</div>' +
+                '</div>' +
+            '</div>';
+        }
     });
     html += '</div>';
     container.innerHTML = html;

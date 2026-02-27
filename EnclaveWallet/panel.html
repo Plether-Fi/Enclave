@@ -17,7 +17,7 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
 }
 .wallet-addr:hover { background: #e0e0e0; }
 #wallet-address { display: flex; align-items: center; gap: 8px; }
-.blockie { width: 32px; height: 32px; border-radius: 4px; vertical-align: middle; margin-right: 6px; image-rendering: pixelated; }
+.blockie { width: 32px; height: 32px; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
 .wallet-menu-item .blockie { width: 24px; height: 24px; margin-right: 0; flex-shrink: 0; }
 .wallet-menu {
     display: none; position: absolute; background: white; border: 1px solid #ddd;
@@ -115,39 +115,70 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
 <div id="history"></div>
 
 <script>
-function makeBlockie(address) {
-    var seed = address.toLowerCase();
-    function xorshift(s) {
-        s[0] ^= s[0] << 13; s[0] ^= s[0] >> 17; s[0] ^= s[0] << 5;
-        return (s[0] >>> 0) / 4294967296;
+function makeJazzicon(address, size) {
+    size = size || 32;
+    var mt = new Array(624), mti = 625;
+    function initMT(seed) {
+        mt[0] = seed >>> 0; mti = 1;
+        while (mti < 624) {
+            mt[mti] = (1812433253 * ((mt[mti-1] ^ (mt[mti-1] >>> 30)) >>> 0) + mti) >>> 0;
+            mti++;
+        }
     }
-    var s = [0];
-    for (var i = 0; i < seed.length; i++) {
-        s[0] = (s[0] + seed.charCodeAt(i) * (i + 1)) | 0;
+    function genMT() {
+        var y, mag = [0, 0x9908b0df];
+        if (mti >= 624) {
+            for (var k = 0; k < 227; k++) {
+                y = (mt[k] & 0x80000000) | (mt[k+1] & 0x7fffffff);
+                mt[k] = mt[k+397] ^ (y >>> 1) ^ mag[y & 1];
+            }
+            for (; k < 623; k++) {
+                y = (mt[k] & 0x80000000) | (mt[k+1] & 0x7fffffff);
+                mt[k] = mt[k-227] ^ (y >>> 1) ^ mag[y & 1];
+            }
+            y = (mt[623] & 0x80000000) | (mt[0] & 0x7fffffff);
+            mt[623] = mt[396] ^ (y >>> 1) ^ mag[y & 1];
+            mti = 0;
+        }
+        y = mt[mti++];
+        y ^= y >>> 11; y ^= (y << 7) & 0x9d2c5680;
+        y ^= (y << 15) & 0xefc60000; y ^= y >>> 18;
+        return (y >>> 0) / 4294967296;
     }
-    function randColor() {
-        var h = Math.floor(xorshift(s) * 360);
-        var sl = 40 + Math.floor(xorshift(s) * 20);
-        var l = 40 + Math.floor(xorshift(s) * 30);
-        return 'hsl(' + h + ',' + sl + '%,' + l + '%)';
+    initMT(parseInt(address.slice(2, 10), 16));
+    var palette = ['#01888C','#FC7500','#034F5D','#F73F01','#FC1960','#C7144C','#F3C100','#1598F2','#2465E1','#F19E02'];
+    var hueShift = Math.floor(genMT() * 30) - 15;
+    function shiftHue(hex) {
+        var r = parseInt(hex.slice(1,3),16)/255, g = parseInt(hex.slice(3,5),16)/255, b = parseInt(hex.slice(5,7),16)/255;
+        var max = Math.max(r,g,b), min = Math.min(r,g,b), d = max-min, h = 0, s = max ? d/max : 0, v = max;
+        if (d) { h = max===r ? (g-b)/d+(g<b?6:0) : max===g ? (b-r)/d+2 : (r-g)/d+4; h *= 60; }
+        h = ((h + hueShift) % 360 + 360) % 360;
+        var hi = Math.floor(h/60)%6, f = h/60-Math.floor(h/60), p = v*(1-s), q = v*(1-f*s), t = v*(1-(1-f)*s);
+        var ro,go,bo;
+        if (hi===0){ro=v;go=t;bo=p;} else if(hi===1){ro=q;go=v;bo=p;} else if(hi===2){ro=p;go=v;bo=t;}
+        else if(hi===3){ro=p;go=q;bo=v;} else if(hi===4){ro=t;go=p;bo=v;} else{ro=v;go=p;bo=q;}
+        return '#'+[ro,go,bo].map(function(c){var h=Math.round(c*255).toString(16);return h.length<2?'0'+h:h;}).join('');
     }
-    var color = randColor(), bg = randColor(), spot = randColor();
-    var data = [];
-    for (var i = 0; i < 64; i++) {
-        var r = xorshift(s);
-        data.push(r < 0.33 ? 0 : r < 0.66 ? 1 : 2);
+    var bgIdx = Math.floor(genMT() * palette.length);
+    var bg = shiftHue(palette.splice(bgIdx, 1)[0]);
+    var half = size / 2;
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+size+'" height="'+size+'">' +
+        '<defs><clipPath id="c"><circle cx="'+half+'" cy="'+half+'" r="'+half+'"/></clipPath></defs>' +
+        '<g clip-path="url(#c)"><rect width="'+size+'" height="'+size+'" fill="'+bg+'"/>';
+    for (var i = 0; i < 4; i++) {
+        var idx = Math.floor(genMT() * palette.length);
+        var fill = shiftHue(palette.splice(idx, 1)[0]);
+        var angle = genMT() * 360;
+        var dist = genMT() * half * 0.6;
+        var theta = genMT() * Math.PI * 2;
+        var cx = half + Math.cos(theta) * dist;
+        var cy = half + Math.sin(theta) * dist;
+        var w = size * (0.25 + genMT() * 0.4);
+        var h = size * (0.25 + genMT() * 0.4);
+        svg += '<rect x="'+(cx-w/2)+'" y="'+(cy-h/2)+'" width="'+w+'" height="'+h+'" fill="'+fill+'" transform="rotate('+angle+' '+cx+' '+cy+')"/>';
     }
-    var c = document.createElement('canvas');
-    c.width = 8; c.height = 8;
-    var ctx = c.getContext('2d');
-    var colors = [bg, color, spot];
-    for (var i = 0; i < 64; i++) {
-        var x = i % 8, y = Math.floor(i / 8);
-        var mx = x < 4 ? x : 7 - x;
-        ctx.fillStyle = colors[data[y * 4 + mx]];
-        ctx.fillRect(x, y, 1, 1);
-    }
-    return c.toDataURL();
+    svg += '</g></svg>';
+    return 'data:image/svg+xml;base64,' + btoa(svg);
 }
 
 function post(action, data) {
@@ -164,7 +195,7 @@ window.updateWallet = function(jsonStr) {
 
     var addrEl = document.getElementById('wallet-address');
     if (s.address) {
-        addrEl.innerHTML = '<img class="blockie" src="' + makeBlockie(s.address) + '">' +
+        addrEl.innerHTML = '<img class="blockie" src="' + makeJazzicon(s.address, 32) + '">' +
             '<span class="pill-info"><span class="pill-name">' + (s.name || s.displayAddress) + '</span>' +
             '<span class="pill-addr">' + (s.displayAddress || '') + '</span></span>';
     } else {
@@ -193,7 +224,7 @@ function buildWalletMenu(wallets, selectedIndex) {
         btn.onclick = function() { selectWallet(w.index); };
         btn.ondblclick = function(e) { e.stopPropagation(); startRename(btn, w); };
         var img = '';
-        if (w.address) img = '<img class="blockie" src="' + makeBlockie(w.address) + '">';
+        if (w.address) img = '<img class="blockie" src="' + makeJazzicon(w.address, 32) + '">';
         btn.innerHTML = img + '<span class="wm-info"><span class="wm-name">' + (w.name || w.display) +
             '</span><span class="wm-addr">' + w.display + '</span></span>';
         menu.appendChild(btn);

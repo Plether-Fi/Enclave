@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -10,12 +11,14 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
 /* Wallet section */
 #wallet { margin-bottom: 20px; }
 .wallet-addr {
-    display: inline-block; font-size: 12px; font-family: monospace;
-    background: #eee; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #eee; padding: 6px 12px; border-radius: 999px; cursor: pointer;
     border: 1px solid #ddd; user-select: none;
 }
 .wallet-addr:hover { background: #e0e0e0; }
+#wallet-address { display: flex; align-items: center; gap: 8px; }
 .blockie { width: 32px; height: 32px; border-radius: 4px; vertical-align: middle; margin-right: 6px; image-rendering: pixelated; }
+.wallet-menu-item .blockie { width: 24px; height: 24px; margin-right: 0; flex-shrink: 0; }
 .wallet-menu {
     display: none; position: absolute; background: white; border: 1px solid #ddd;
     border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 10;
@@ -23,12 +26,23 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
 }
 .wallet-menu.open { display: block; }
 .wallet-menu-item {
-    display: block; width: 100%; padding: 8px 14px; font-size: 12px;
-    font-family: monospace; background: none; border: none; text-align: left;
+    display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 14px; font-size: 12px;
+    background: none; border: none; text-align: left;
     cursor: pointer; color: #111;
 }
 .wallet-menu-item:hover { background: #f0f0f0; }
 .wallet-menu-item.active { font-weight: 700; }
+.wallet-menu-item .wm-info { display: flex; flex-direction: column; min-width: 0; }
+.wallet-menu-item .wm-name { font-family: -apple-system, system-ui; font-size: 12px; }
+.wallet-menu-item .wm-addr { font-family: monospace; font-size: 10px; color: #999; }
+.wallet-menu-item .wm-rename {
+    font-size: 12px; font-family: -apple-system, system-ui; border: 1px solid #ddd;
+    border-radius: 4px; padding: 2px 6px; width: 100%; outline: none;
+}
+.wallet-menu-item .wm-rename:focus { border-color: #007aff; }
+.pill-info { display: flex; flex-direction: column; line-height: 1.2; }
+.pill-name { font-family: -apple-system, system-ui; font-size: 13px; font-weight: 500; }
+.pill-addr { font-family: monospace; font-size: 10px; color: #888; }
 .wallet-menu-sep { height: 1px; background: #e5e5e5; margin: 4px 0; }
 .wallet-menu-item.new-wallet { font-family: -apple-system, system-ui; color: #007aff; }
 
@@ -150,9 +164,11 @@ window.updateWallet = function(jsonStr) {
 
     var addrEl = document.getElementById('wallet-address');
     if (s.address) {
-        addrEl.innerHTML = '<img class="blockie" src="' + makeBlockie(s.address) + '"> ' + (s.displayAddress || 'No Wallet');
+        addrEl.innerHTML = '<img class="blockie" src="' + makeBlockie(s.address) + '">' +
+            '<span class="pill-info"><span class="pill-name">' + (s.name || s.displayAddress) + '</span>' +
+            '<span class="pill-addr">' + (s.displayAddress || '') + '</span></span>';
     } else {
-        addrEl.textContent = s.displayAddress || 'No Wallet';
+        addrEl.textContent = 'No Wallet';
     }
     document.getElementById('eth-bal').textContent = s.ethBalance || '...';
     document.getElementById('usdc-bal').textContent = s.usdcBalance || '...';
@@ -170,15 +186,51 @@ window.updateWallet = function(jsonStr) {
 
 function buildWalletMenu(wallets, selectedIndex) {
     var menu = document.getElementById('wallet-menu');
-    var html = '';
+    menu.innerHTML = '';
     wallets.forEach(function(w) {
-        var cls = 'wallet-menu-item' + (w.index === selectedIndex ? ' active' : '');
-        var img = w.address ? '<img class="blockie" src="' + makeBlockie(w.address) + '"> ' : '';
-        html += '<button class="' + cls + '" onclick="selectWallet(' + w.index + ')">' + img + w.display + '</button>';
+        var btn = document.createElement('button');
+        btn.className = 'wallet-menu-item' + (w.index === selectedIndex ? ' active' : '');
+        btn.onclick = function() { selectWallet(w.index); };
+        btn.ondblclick = function(e) { e.stopPropagation(); startRename(btn, w); };
+        var img = '';
+        if (w.address) img = '<img class="blockie" src="' + makeBlockie(w.address) + '">';
+        btn.innerHTML = img + '<span class="wm-info"><span class="wm-name">' + (w.name || w.display) +
+            '</span><span class="wm-addr">' + w.display + '</span></span>';
+        menu.appendChild(btn);
     });
-    if (wallets.length > 0) html += '<div class="wallet-menu-sep"></div>';
-    html += '<button class="wallet-menu-item new-wallet" onclick="post(\'newWallet\')">New Wallet</button>';
-    menu.innerHTML = html;
+    if (wallets.length > 0) {
+        var sep = document.createElement('div');
+        sep.className = 'wallet-menu-sep';
+        menu.appendChild(sep);
+    }
+    var newBtn = document.createElement('button');
+    newBtn.className = 'wallet-menu-item new-wallet';
+    newBtn.textContent = 'New Wallet';
+    newBtn.onclick = function() { post('newWallet'); };
+    menu.appendChild(newBtn);
+}
+
+function startRename(btn, wallet) {
+    var info = btn.querySelector('.wm-info');
+    if (!info) return;
+    var input = document.createElement('input');
+    input.className = 'wm-rename';
+    input.value = wallet.name || '';
+    info.innerHTML = '';
+    info.appendChild(input);
+    input.focus();
+    input.select();
+    function commit() {
+        var name = input.value.trim();
+        if (name && name !== wallet.name) {
+            post('renameWallet', { index: wallet.index, name: name });
+        }
+    }
+    input.onkeydown = function(e) {
+        if (e.key === 'Enter') { commit(); input.blur(); }
+        if (e.key === 'Escape') { input.blur(); }
+    };
+    input.onblur = function() { commit(); };
 }
 
 function selectWallet(index) {

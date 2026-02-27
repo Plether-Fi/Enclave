@@ -14,6 +14,7 @@ struct Wallet {
     let address: String
     let pubKeyX: String
     let pubKeyY: String
+    var name: String
 
     var displayAddress: String {
         String(address.prefix(6)) + "..." + String(address.suffix(4))
@@ -58,7 +59,9 @@ class EnclaveEngine: @unchecked Sendable {
 
         let (x, y) = extractCoordinates(from: key.publicKey)
         let address = computeCounterfactualAddress(pubKeyX: x, pubKeyY: y, salt: UInt64(index))
-        let wallet = Wallet(index: index, privateKey: key, address: address, pubKeyX: x, pubKeyY: y)
+        let defaultName = "Wallet \(index + 1)"
+        UserDefaults.standard.set(defaultName, forKey: "walletName.\(index)")
+        let wallet = Wallet(index: index, privateKey: key, address: address, pubKeyX: x, pubKeyY: y, name: defaultName)
         wallets.append(wallet)
         selectedIndex = index
         log.notice("Wallet \(index, privacy: .public) created: \(wallet.displayAddress, privacy: .public)")
@@ -67,6 +70,13 @@ class EnclaveEngine: @unchecked Sendable {
     func selectWallet(at index: Int) {
         guard wallets.contains(where: { $0.index == index }) else { return }
         selectedIndex = index
+    }
+
+    func renameWallet(at index: Int, to name: String) {
+        guard let i = wallets.firstIndex(where: { $0.index == index }) else { return }
+        wallets[i].name = name
+        UserDefaults.standard.set(name, forKey: "walletName.\(index)")
+        NotificationCenter.default.post(name: .walletStateDidChange, object: nil)
     }
 
     func getCoordinates() -> (x: String, y: String)? {
@@ -169,7 +179,8 @@ class EnclaveEngine: @unchecked Sendable {
                 let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: data)
                 let (x, y) = extractCoordinates(from: key.publicKey)
                 let address = computeCounterfactualAddress(pubKeyX: x, pubKeyY: y, salt: UInt64(index))
-                let wallet = Wallet(index: index, privateKey: key, address: address, pubKeyX: x, pubKeyY: y)
+                let name = UserDefaults.standard.string(forKey: "walletName.\(index)") ?? "Wallet \(index + 1)"
+                let wallet = Wallet(index: index, privateKey: key, address: address, pubKeyX: x, pubKeyY: y, name: name)
                 wallets.append(wallet)
                 log.notice("Wallet \(index, privacy: .public): \(address, privacy: .public) x=\(x, privacy: .public) y=\(y, privacy: .public)")
             } catch {

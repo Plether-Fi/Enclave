@@ -355,6 +355,12 @@ struct ActivityWebView: NSViewRepresentable {
             case "newWallet": onNewWallet?()
             case "selectWallet":
                 if let index = json["data"] as? Int { onSelectWallet?(index) }
+            case "renameWallet":
+                if let payload = json["data"] as? [String: Any],
+                   let index = payload["index"] as? Int,
+                   let name = payload["name"] as? String {
+                    EnclaveEngine.shared.renameWallet(at: index, to: name)
+                }
             default: break
             }
         }
@@ -366,11 +372,12 @@ struct ActivityWebView: NSViewRepresentable {
 
         func updateWalletState() {
             let wallets = EnclaveEngine.shared.wallets.map { w -> [String: Any] in
-                ["index": w.index, "display": w.displayAddress, "address": w.address]
+                ["index": w.index, "display": w.displayAddress, "address": w.address, "name": w.name]
             }
             let state: [String: Any] = [
                 "displayAddress": EnclaveEngine.shared.currentWallet?.displayAddress ?? "No Wallet",
                 "address": EnclaveEngine.shared.currentWallet?.address ?? "",
+                "name": EnclaveEngine.shared.currentWallet?.name ?? "No Wallet",
                 "ethBalance": UserDefaults.standard.string(forKey: "cachedEthBalance") ?? "...",
                 "usdcBalance": UserDefaults.standard.string(forKey: "cachedUsdcBalance") ?? "...",
                 "networkName": Config.activeNetwork.displayName,

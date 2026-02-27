@@ -22,6 +22,7 @@ button:active { background: #555; }
 }
 .result.error { background: #fef2f2; color: #dc2626; }
 .result.success { background: #f0fdf4; color: #16a34a; }
+.hint { font-size: 11px; color: #888; margin: 4px 0 8px; line-height: 1.5; }
 #status { font-size: 13px; color: #999; margin-bottom: 12px; }
 input {
     padding: 8px; border-radius: 6px; border: 1px solid #ddd;
@@ -56,14 +57,8 @@ input {
 </div>
 
 <div class="card">
-    <h3>Sign Message</h3>
-    <input id="sign-msg" type="text" value="Hello from Kitchen Sink!" placeholder="Message to sign">
-    <button onclick="signMessage()">Personal Sign</button>
-    <div id="sign-result" class="result" style="display:none"></div>
-</div>
-
-<div class="card">
     <h3>EIP-712 Sign</h3>
+    <div class="hint">Off-chain signature. Hashes EIP-712 structured data (domain + types + message), then signs with a secp256k1 session key. First sign registers the key on-chain (Touch ID + gas), after that signatures are instant — no Touch ID, no gas. Wallet must be deployed.</div>
     <div id="eip712-preview" class="result" style="display:block"></div>
     <button onclick="signTypedData()">Sign Typed Data</button>
     <div id="eip712-result" class="result" style="display:none"></div>
@@ -71,6 +66,7 @@ input {
 
 <div class="card">
     <h3>Send Transaction</h3>
+    <div class="hint">On-chain transaction. Builds an ERC-4337 UserOperation signed with the P-256 Secure Enclave key — requires Touch ID and gas every time. Session keys cannot send transactions. First tx auto-deploys the wallet via initCode.</div>
     <input id="send-to" type="text" placeholder="Recipient (0x...)">
     <input id="send-value" type="text" value="0" placeholder="Value in wei (hex, e.g. 0x0)">
     <button onclick="sendTx()">Send</button>
@@ -159,16 +155,6 @@ async function getBalance() {
         const eth = Number(wei) / 1e18;
         show('bal-result', bal + '\n' + eth.toFixed(6) + ' ETH');
     } catch (e) { show('bal-result', e.message, true); }
-}
-
-async function signMessage() {
-    try {
-        if (!account) { show('sign-result', 'Connect wallet first', true); return; }
-        const msg = document.getElementById('sign-msg').value;
-        const hex = '0x' + Array.from(new TextEncoder().encode(msg)).map(b => b.toString(16).padStart(2, '0')).join('');
-        const sig = await request('personal_sign', [hex, account]);
-        show('sign-result', sig);
-    } catch (e) { show('sign-result', e.message, true); }
 }
 
 const eip712Data = {

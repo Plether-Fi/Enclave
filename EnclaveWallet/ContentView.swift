@@ -886,7 +886,7 @@ struct NewWalletView: View {
 
             Button { selectedType = .eoa } label: {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("secp256k1 Traditional Wallet").fontWeight(.semibold)
+                    Text("secp256k1 Traditional Wallet (legacy)").fontWeight(.semibold)
                     Text("Standard Ethereum EOA. Compatible with all dApps and off-chain signing. Key stored in Keychain, encrypted by Secure Enclave.")
                         .font(.caption).foregroundColor(.secondary)
                 }

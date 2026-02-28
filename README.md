@@ -97,6 +97,7 @@ Enclave bridges Apple's proprietary silicon to the Ethereum Virtual Machine (EVM
 - [x] Network switching (Arbitrum Sepolia / One)
 - [ ] Factory deployment to Arbitrum Sepolia
 - [x] Session keys for off-chain signing (secp256k1 + EIP-1271)
+- [x] secp256k1 EOA wallets for universal dApp compatibility
 - [ ] IPFS dApp loading with content verification
 - [ ] App manifest system
 
@@ -195,6 +196,28 @@ Session keys are revocable by the owner via `removeSessionKey(address)` (also a 
 ### 4. On-Chain Spending Limits
 
 `EnclaveWallet.sol` enforces per-token daily spending limits at the contract level. Limits are set by the wallet itself (via `execute` calling `setDailyLimit`), checked on every `execute` call for ETH value and ERC-20 transfer/approve amounts, and auto-reset every 24 hours based on block timestamp.
+
+### 5. Two Wallet Types
+
+Enclave supports two fundamentally different wallet types, selectable when creating a new wallet:
+
+**P-256 Smart Wallet (Secure Enclave)**
+- Private key lives inside the Secure Enclave chip — physically cannot be extracted, even by malware with root access
+- Uses ERC-4337 account abstraction: transactions are submitted as UserOperations signed with P-256 ECDSA, verified on-chain via the RIP-7212 precompile
+- Address is a CREATE2 counterfactual address derived from the factory, public key coordinates, and a salt
+- Requires on-chain deployment (automatically handled on first transaction)
+- Off-chain signing uses per-dApp secp256k1 session keys registered on the wallet contract and verified via EIP-1271
+- Supports batched transactions, paymaster gas sponsorship, and on-chain spending limits
+
+**secp256k1 Traditional Wallet (EOA)**
+- Standard Ethereum externally owned account, compatible with every dApp and protocol without exception
+- Private key is generated in software and stored in macOS Keychain, which encrypts it using the Secure Enclave's hardware key — the key is protected by the same biometric/passcode policy but is not physically bound to the chip
+- Address is derived the standard way: `keccak256(uncompressed_pubkey)[last 20 bytes]`
+- Signs directly with `ecrecover`-compatible 65-byte signatures (r + s + v) — no session keys, no EIP-1271, no on-chain registration needed
+- Off-chain signing is instant with no Touch ID prompt and no on-chain transactions
+- Transaction sending (`eth_sendTransaction`) is not yet supported for EOA wallets — currently limited to off-chain signing
+
+Both wallet types coexist in the same wallet selector. Keys are stored in separate Keychain accounts (`key.{index}` for P-256, `eoa.{index}` for secp256k1) and wallet type metadata is persisted in UserDefaults.
 
 ---
 

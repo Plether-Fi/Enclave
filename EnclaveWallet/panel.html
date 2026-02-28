@@ -38,6 +38,7 @@ h3 { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercas
 .wm-badge { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-family: -apple-system, system-ui; margin-left: 4px; }
 .wm-badge.deployed { background: #e8f5e9; color: #2e7d32; }
 .wm-badge.not-deployed { background: #fff3e0; color: #e65100; }
+.wm-badge.eoa { background: #e3f2fd; color: #1565c0; }
 .wallet-menu-item .wm-rename {
     font-size: 12px; font-family: -apple-system, system-ui; border: 1px solid #ddd;
     border-radius: 4px; padding: 2px 6px; width: 100%; outline: none;
@@ -205,9 +206,11 @@ window.updateWallet = function(jsonStr) {
 
     var addrEl = document.getElementById('wallet-address');
     if (s.address) {
-        var pillBadge = s.deployed
-            ? '<span class="wm-badge deployed">deployed</span>'
-            : '<span class="wm-badge not-deployed">not deployed</span>';
+        var pillBadge = s.type === 'eoa'
+            ? '<span class="wm-badge eoa">EOA</span>'
+            : (s.deployed
+                ? '<span class="wm-badge deployed">deployed</span>'
+                : '<span class="wm-badge not-deployed">not deployed</span>');
         addrEl.innerHTML = '<img class="blockie" src="' + makeJazzicon(s.address, 40) + '">' +
             '<span class="pill-info"><span class="pill-name">' + (s.name || s.displayAddress) + pillBadge + '</span>' +
             '<span class="pill-addr">' + (s.displayAddress || '') + '</span></span>';
@@ -230,9 +233,11 @@ function buildWalletMenu(wallets, selectedIndex) {
         btn.ondblclick = function(e) { e.stopPropagation(); startRename(btn, w); };
         var img = '';
         if (w.address) img = '<img class="blockie" src="' + makeJazzicon(w.address, 40) + '">';
-        var badge = w.deployed
-            ? '<span class="wm-badge deployed">deployed</span>'
-            : '<span class="wm-badge not-deployed">not deployed</span>';
+        var badge = w.type === 'eoa'
+            ? '<span class="wm-badge eoa">EOA</span>'
+            : (w.deployed
+                ? '<span class="wm-badge deployed">deployed</span>'
+                : '<span class="wm-badge not-deployed">not deployed</span>');
         btn.innerHTML = img + '<span class="wm-info"><span class="wm-name">' + (w.name || w.display) + badge +
             '</span><span class="wm-addr">' + w.display + '</span></span>';
         menu.appendChild(btn);

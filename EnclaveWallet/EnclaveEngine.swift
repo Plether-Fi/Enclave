@@ -3,24 +3,52 @@ import CryptoKit
 import CryptoSwift
 import Security
 import BigInt
+import P256K
 import os
 
 private let log = Logger(subsystem: "com.plether.EnclaveWallet", category: "Engine")
 private let keychainService = "com.plether.EnclaveWallet"
 
+enum WalletKind {
+    case smartWallet(privateKey: SecureEnclave.P256.Signing.PrivateKey, pubKeyX: String, pubKeyY: String)
+    case eoa
+}
+
 struct Wallet {
     let index: Int
-    let privateKey: SecureEnclave.P256.Signing.PrivateKey
+    let kind: WalletKind
     let address: String
-    let pubKeyX: String
-    let pubKeyY: String
     var name: String
+    var isDeployed: Bool = false
 
     var displayAddress: String {
         String(address.prefix(6)) + "..." + String(address.suffix(4))
     }
 
-    var isDeployed: Bool = false
+    var isSmartWallet: Bool {
+        if case .smartWallet = kind { return true }
+        return false
+    }
+
+    var isEOA: Bool {
+        if case .eoa = kind { return true }
+        return false
+    }
+
+    var pubKeyX: String? {
+        guard case .smartWallet(_, let x, _) = kind else { return nil }
+        return x
+    }
+
+    var pubKeyY: String? {
+        guard case .smartWallet(_, _, let y) = kind else { return nil }
+        return y
+    }
+
+    var p256Key: SecureEnclave.P256.Signing.PrivateKey? {
+        guard case .smartWallet(let key, _, _) = kind else { return nil }
+        return key
+    }
 }
 
 class EnclaveEngine: @unchecked Sendable {
@@ -33,10 +61,6 @@ class EnclaveEngine: @unchecked Sendable {
 
     var currentWallet: Wallet? {
         wallets.first { $0.index == selectedIndex }
-    }
-
-    private var privateKey: SecureEnclave.P256.Signing.PrivateKey? {
-        currentWallet?.privateKey
     }
 
     private init() {
@@ -61,10 +85,28 @@ class EnclaveEngine: @unchecked Sendable {
         let address = computeCounterfactualAddress(pubKeyX: x, pubKeyY: y, salt: UInt64(index))
         let defaultName = "Wallet \(index + 1)"
         UserDefaults.standard.set(defaultName, forKey: "walletName.\(index)")
-        let wallet = Wallet(index: index, privateKey: key, address: address, pubKeyX: x, pubKeyY: y, name: defaultName)
+        UserDefaults.standard.set("smart", forKey: "walletType.\(index)")
+        let wallet = Wallet(index: index, kind: .smartWallet(privateKey: key, pubKeyX: x, pubKeyY: y), address: address, name: defaultName)
         wallets.append(wallet)
         selectedIndex = index
-        log.notice("Wallet \(index, privacy: .public) created: \(wallet.displayAddress, privacy: .public)")
+        log.notice("Smart wallet \(index, privacy: .public) created: \(wallet.displayAddress, privacy: .public)")
+    }
+
+    func generateEOAKey() throws {
+        let privateKey = try P256K.Signing.PrivateKey()
+        let index = (wallets.map(\.index).max() ?? -1) + 1
+
+        let keyData = Data(privateKey.dataRepresentation)
+        saveEOAKeyToKeychain(keyData, index: index)
+
+        let address = try deriveEOAAddress(from: keyData)
+        let defaultName = "Wallet \(index + 1)"
+        UserDefaults.standard.set(defaultName, forKey: "walletName.\(index)")
+        UserDefaults.standard.set("eoa", forKey: "walletType.\(index)")
+        let wallet = Wallet(index: index, kind: .eoa, address: address, name: defaultName)
+        wallets.append(wallet)
+        selectedIndex = index
+        log.notice("EOA wallet \(index, privacy: .public) created: \(wallet.displayAddress, privacy: .public)")
     }
 
     func selectWallet(at index: Int) {
@@ -80,36 +122,27 @@ class EnclaveEngine: @unchecked Sendable {
     }
 
     func getCoordinates() -> (x: String, y: String)? {
-        guard let wallet = currentWallet else { return nil }
-        return (wallet.pubKeyX, wallet.pubKeyY)
+        guard let wallet = currentWallet,
+              let x = wallet.pubKeyX, let y = wallet.pubKeyY else { return nil }
+        return (x, y)
     }
 
     func signEVMHash(payloadHash: Data) throws -> String {
-        guard let key = self.privateKey else { throw NSError(domain: "NoKey", code: 0) }
-
-        let signature = try key.signature(for: payloadHash)
-
-        let rawSig = signature.rawRepresentation
-        let rData = rawSig[0..<32]
-        var sData = Data(rawSig[32..<64])
-
-        var sBigInt = BigUInt(sData)
-        let p256Order = BigUInt("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551", radix: 16)!
-        let halfOrder = p256Order / 2
-
-        if sBigInt > halfOrder {
-            sBigInt = p256Order - sBigInt
-            sData = sBigInt.serialize()
-            if sData.count < 32 { sData = Data(repeating: 0, count: 32 - sData.count) + sData }
-        }
-
-        let finalSignature = rData + sData
-        return "0x" + finalSignature.map { String(format: "%02x", $0) }.joined()
+        let sig = try signEVMHashRaw(payloadHash: payloadHash)
+        return "0x" + sig.map { String(format: "%02x", $0) }.joined()
     }
 
     func signEVMHashRaw(payloadHash: Data) throws -> Data {
-        guard let key = self.privateKey else { throw NSError(domain: "NoKey", code: 0) }
+        guard let wallet = currentWallet else { throw NSError(domain: "NoKey", code: 0) }
+        switch wallet.kind {
+        case .smartWallet(let key, _, _):
+            return try signP256(key: key, payloadHash: payloadHash)
+        case .eoa:
+            return try signSecp256k1(walletIndex: wallet.index, payloadHash: payloadHash)
+        }
+    }
 
+    private func signP256(key: SecureEnclave.P256.Signing.PrivateKey, payloadHash: Data) throws -> Data {
         let signature = try key.signature(for: payloadHash)
 
         let rawSig = signature.rawRepresentation
@@ -129,8 +162,25 @@ class EnclaveEngine: @unchecked Sendable {
         return Data(rData) + sData
     }
 
+    func signSecp256k1(walletIndex: Int, payloadHash: Data) throws -> Data {
+        guard let keyData = loadKeychainData(account: "eoa.\(walletIndex)") else {
+            throw NSError(domain: "NoKey", code: 0)
+        }
+        let privateKey = try P256K.Recovery.PrivateKey(dataRepresentation: keyData)
+        let digest = HashDigest(Array(payloadHash))
+        let signature = try privateKey.signature(for: digest)
+        let compact = try signature.compactRepresentation
+        let v = UInt8(compact.recoveryId) + 27
+
+        var result = Data(capacity: 65)
+        result.append(compact.signature)
+        result.append(v)
+        return result
+    }
+
     func refreshDeploymentStatus() async {
         for i in wallets.indices {
+            guard wallets[i].isSmartWallet else { continue }
             let address = wallets[i].address
             do {
                 let code = try await RPCClient.shared.getCode(address: address)
@@ -158,33 +208,61 @@ class EnclaveEngine: @unchecked Sendable {
         }
     }
 
+    private func saveEOAKeyToKeychain(_ data: Data, index: Int) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: "eoa.\(index)",
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            let update: [String: Any] = [kSecValueData as String: data]
+            SecItemUpdate(query as CFDictionary, update as CFDictionary)
+        }
+    }
+
+    func loadKeychainData(account: String) -> Data? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return data
+    }
+
     private func loadWallets() {
         for index in 0..<100 {
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: keychainService,
-                kSecAttrAccount as String: "key.\(index)",
-                kSecReturnData as String: true,
-            ]
+            let walletType = UserDefaults.standard.string(forKey: "walletType.\(index)")
+            let name = UserDefaults.standard.string(forKey: "walletName.\(index)") ?? "Wallet \(index + 1)"
 
-            var result: AnyObject?
-            let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-            guard status == errSecSuccess, let data = result as? Data else {
-                if status == errSecItemNotFound { continue }
-                break
-            }
-
-            do {
-                let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: data)
-                let (x, y) = extractCoordinates(from: key.publicKey)
-                let address = computeCounterfactualAddress(pubKeyX: x, pubKeyY: y, salt: UInt64(index))
-                let name = UserDefaults.standard.string(forKey: "walletName.\(index)") ?? "Wallet \(index + 1)"
-                let wallet = Wallet(index: index, privateKey: key, address: address, pubKeyX: x, pubKeyY: y, name: name)
-                wallets.append(wallet)
-                log.notice("Wallet \(index, privacy: .public): \(address, privacy: .public) x=\(x, privacy: .public) y=\(y, privacy: .public)")
-            } catch {
-                log.error("Failed to restore key \(index, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            if walletType == "eoa" {
+                guard let keyData = loadKeychainData(account: "eoa.\(index)") else { continue }
+                do {
+                    let address = try deriveEOAAddress(from: keyData)
+                    wallets.append(Wallet(index: index, kind: .eoa, address: address, name: name))
+                    log.notice("EOA wallet \(index, privacy: .public): \(address, privacy: .public)")
+                } catch {
+                    log.error("Failed to restore EOA key \(index, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                }
+            } else {
+                guard let data = loadKeychainData(account: "key.\(index)") else { continue }
+                do {
+                    let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: data)
+                    let (x, y) = extractCoordinates(from: key.publicKey)
+                    let address = computeCounterfactualAddress(pubKeyX: x, pubKeyY: y, salt: UInt64(index))
+                    wallets.append(Wallet(index: index, kind: .smartWallet(privateKey: key, pubKeyX: x, pubKeyY: y), address: address, name: name))
+                    log.notice("Smart wallet \(index, privacy: .public): \(address, privacy: .public)")
+                } catch {
+                    log.error("Failed to restore key \(index, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                }
             }
         }
 
@@ -196,6 +274,15 @@ class EnclaveEngine: @unchecked Sendable {
     }
 
     // MARK: - Address Derivation
+
+    private func deriveEOAAddress(from keyData: Data) throws -> String {
+        let privateKey = try P256K.Signing.PrivateKey(dataRepresentation: keyData)
+        let uncompressed = privateKey.publicKey.uncompressedRepresentation
+        let pubKeyBytes = Array(uncompressed.dropFirst())
+        let hash = Digest.sha3(pubKeyBytes, variant: .keccak256)
+        let addressBytes = hash.suffix(20)
+        return "0x" + addressBytes.map { String(format: "%02x", $0) }.joined()
+    }
 
     private func extractCoordinates(from publicKey: P256.Signing.PublicKey) -> (x: String, y: String) {
         let raw = publicKey.rawRepresentation

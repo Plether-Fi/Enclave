@@ -146,6 +146,10 @@ struct WalledGardenWebView: NSViewRepresentable {
                 var prefixed = Data(prefix.utf8)
                 prefixed.append(msgData)
                 let hash = Data(Digest.sha3(Array(prefixed), variant: .keccak256))
+                if wallet.isEOA {
+                    let sig = try EnclaveEngine.shared.signSecp256k1(walletIndex: wallet.index, payloadHash: hash)
+                    return "0x" + sig.map { String(format: "%02x", $0) }.joined()
+                }
                 let appId = webView?.url?.host ?? "unknown"
                 return try await SessionKeySigner.signHash(hash, appId: appId, wallet: wallet)
 
@@ -155,10 +159,15 @@ struct WalledGardenWebView: NSViewRepresentable {
                     throw BridgeError.invalidParams
                 }
                 let hash = try EIP712Hasher.hashTypedData(json: jsonData)
+                if wallet.isEOA {
+                    let sig = try EnclaveEngine.shared.signSecp256k1(walletIndex: wallet.index, payloadHash: hash)
+                    return "0x" + sig.map { String(format: "%02x", $0) }.joined()
+                }
                 let appId = webView?.url?.host ?? "unknown"
                 return try await SessionKeySigner.signHash(hash, appId: appId, wallet: wallet)
 
             case "eth_sendTransaction":
+                guard wallet.isSmartWallet else { throw BridgeError.unsupportedMethod("eth_sendTransaction (EOA sending not yet supported)") }
                 guard let txObj = params.first as? [String: Any] else { throw BridgeError.invalidParams }
                 return try await sendUserOperation(wallet: wallet, tx: txObj)
 
@@ -201,10 +210,10 @@ struct WalledGardenWebView: NSViewRepresentable {
             let nonce = try await RPCClient.shared.getEntryPointNonce(sender: wallet.address)
             op.nonce = "0x" + String(nonce, radix: 16)
 
-            if !wallet.isDeployed {
+            if !wallet.isDeployed, let x = wallet.pubKeyX, let y = wallet.pubKeyY {
                 op.initCode = UserOperation.buildInitCode(
-                    pubKeyX: wallet.pubKeyX,
-                    pubKeyY: wallet.pubKeyY,
+                    pubKeyX: x,
+                    pubKeyY: y,
                     salt: UInt64(wallet.index)
                 )
             }
@@ -437,18 +446,20 @@ struct ActivityWebView: NSViewRepresentable {
 
         func updateWalletState() {
             let wallets = EnclaveEngine.shared.wallets.map { w -> [String: Any] in
-                ["index": w.index, "display": w.displayAddress, "address": w.address, "name": w.name, "deployed": w.isDeployed]
+                ["index": w.index, "display": w.displayAddress, "address": w.address, "name": w.name, "deployed": w.isDeployed, "type": w.isSmartWallet ? "smart" : "eoa"]
             }
+            let currentWallet = EnclaveEngine.shared.currentWallet
             let state: [String: Any] = [
-                "displayAddress": EnclaveEngine.shared.currentWallet?.displayAddress ?? "No Wallet",
-                "address": EnclaveEngine.shared.currentWallet?.address ?? "",
-                "name": EnclaveEngine.shared.currentWallet?.name ?? "No Wallet",
+                "displayAddress": currentWallet?.displayAddress ?? "No Wallet",
+                "address": currentWallet?.address ?? "",
+                "name": currentWallet?.name ?? "No Wallet",
                 "ethBalance": UserDefaults.standard.string(forKey: "cachedEthBalance") ?? "...",
                 "usdcBalance": UserDefaults.standard.string(forKey: "cachedUsdcBalance") ?? "...",
                 "networkName": Config.activeNetwork.displayName,
                 "sessionsCount": WalletConnectService.shared.sessions.count,
                 "selectedIndex": EnclaveEngine.shared.selectedIndex,
-                "deployed": EnclaveEngine.shared.currentWallet?.isDeployed ?? false,
+                "deployed": currentWallet?.isDeployed ?? false,
+                "type": currentWallet?.isSmartWallet == true ? "smart" : "eoa",
                 "wallets": wallets,
             ]
             guard let jsonData = try? JSONSerialization.data(withJSONObject: state),

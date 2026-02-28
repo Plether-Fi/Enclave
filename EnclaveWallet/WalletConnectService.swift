@@ -234,7 +234,13 @@ class WalletConnectService: ObservableObject {
                     throw WCServiceError.invalidParams
                 }
 
-                let signature = try await SessionKeySigner.signHash(hash, appId: appId, wallet: wallet)
+                let signature: String
+                if wallet.isEOA {
+                    let sig = try EnclaveEngine.shared.signSecp256k1(walletIndex: wallet.index, payloadHash: hash)
+                    signature = "0x" + sig.map { String(format: "%02x", $0) }.joined()
+                } else {
+                    signature = try await SessionKeySigner.signHash(hash, appId: appId, wallet: wallet)
+                }
 
                 try await Sign.instance.respond(
                     topic: request.topic,
@@ -261,6 +267,12 @@ class WalletConnectService: ObservableObject {
         guard let request = pendingRequest,
               let wallet = EnclaveEngine.shared.currentWallet else { return }
 
+        guard wallet.isSmartWallet else {
+            respondError(request: request, code: -32000, message: "Transaction sending not yet supported for EOA wallets")
+            pendingRequest = nil
+            return
+        }
+
         Task {
             do {
                 await MainActor.run { signingStatus = .signing }
@@ -278,10 +290,10 @@ class WalletConnectService: ObservableObject {
                 let nonce = try await RPCClient.shared.getEntryPointNonce(sender: wallet.address)
                 op.nonce = "0x" + String(nonce, radix: 16)
 
-                if !wallet.isDeployed {
+                if !wallet.isDeployed, let x = wallet.pubKeyX, let y = wallet.pubKeyY {
                     op.initCode = UserOperation.buildInitCode(
-                        pubKeyX: wallet.pubKeyX,
-                        pubKeyY: wallet.pubKeyY,
+                        pubKeyX: x,
+                        pubKeyY: y,
                         salt: UInt64(wallet.index)
                     )
                     op.verificationGasLimit = 5_000_000

@@ -54,6 +54,7 @@ struct ContentView: View {
         return saved
     }()
     @State private var showAddApp = false
+    @State private var showNewWallet = false
     @State private var newAppAddress = ""
     @State private var selectedProtocol: AppProtocol = .https
 
@@ -82,14 +83,7 @@ struct ContentView: View {
                         EnclaveEngine.shared.selectWallet(at: index)
                         refreshWallets()
                     },
-                    onNewWallet: {
-                        do {
-                            try EnclaveEngine.shared.generateKey()
-                            refreshWallets()
-                        } catch {
-                            log.error("Key generation failed: \(error.localizedDescription, privacy: .public)")
-                        }
-                    }
+                    onNewWallet: { showNewWallet = true }
                 )
                     .frame(width: 360)
             }
@@ -102,6 +96,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showReceive) {
             ReceiveView()
+        }
+        .sheet(isPresented: $showNewWallet) {
+            NewWalletView(onComplete: { refreshWallets() })
         }
         .sheet(item: $wcService.pendingProposal) { proposal in
             SessionProposalView(
@@ -847,6 +844,112 @@ struct SessionsListView: View {
     }
 }
 
+// MARK: - New Wallet View
+
+struct NewWalletView: View {
+    let onComplete: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedType: WalletTypeChoice?
+    @State private var walletName = ""
+    @State private var errorMessage: String?
+
+    enum WalletTypeChoice { case smart, eoa }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            if selectedType == nil {
+                typeSelectionStep
+            } else {
+                nameInputStep
+            }
+        }
+        .padding(24)
+        .frame(width: 380)
+    }
+
+    private var typeSelectionStep: some View {
+        VStack(spacing: 16) {
+            Text("New Wallet").font(.title2).bold()
+
+            Button { selectedType = .smart } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("P-256 Smart Wallet").fontWeight(.semibold)
+                    Text("Key secured by Secure Enclave hardware. Uses ERC-4337 account abstraction. Requires on-chain deployment before sending transactions.")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(Color.secondary.opacity(0.08))
+                .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+
+            Button { selectedType = .eoa } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("secp256k1 Traditional Wallet").fontWeight(.semibold)
+                    Text("Standard Ethereum EOA. Compatible with all dApps and off-chain signing. Key stored in Keychain, encrypted by Secure Enclave.")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(Color.secondary.opacity(0.08))
+                .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+
+            Button("Cancel") { dismiss() }
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var nameInputStep: some View {
+        VStack(spacing: 16) {
+            Text("Name Your Wallet").font(.title2).bold()
+
+            TextField("Wallet name", text: $walletName)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { create() }
+
+            if let errorMessage {
+                Text(errorMessage).foregroundColor(.red).font(.caption)
+            }
+
+            HStack {
+                Button("Back") {
+                    selectedType = nil
+                    errorMessage = nil
+                }
+                Spacer()
+                Button("Create") { create() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(walletName.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+
+    private func create() {
+        let name = walletName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+
+        do {
+            switch selectedType {
+            case .smart: try EnclaveEngine.shared.generateKey()
+            case .eoa: try EnclaveEngine.shared.generateEOAKey()
+            case nil: return
+            }
+
+            if let wallet = EnclaveEngine.shared.currentWallet {
+                EnclaveEngine.shared.renameWallet(at: wallet.index, to: name)
+            }
+
+            onComplete()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
 // MARK: - Send View
 
 struct SendView: View {
@@ -967,6 +1070,10 @@ struct SendView: View {
 
     private func buildTransaction() {
         guard let wallet = EnclaveEngine.shared.currentWallet else { return }
+        guard wallet.isSmartWallet else {
+            status = .error("Sending from EOA wallets is not yet supported")
+            return
+        }
 
         Task {
             do {
@@ -977,10 +1084,10 @@ struct SendView: View {
                 let nonce = try await RPCClient.shared.getEntryPointNonce(sender: wallet.address)
                 op.nonce = "0x" + String(nonce, radix: 16)
 
-                if !wallet.isDeployed {
+                if !wallet.isDeployed, let x = wallet.pubKeyX, let y = wallet.pubKeyY {
                     op.initCode = UserOperation.buildInitCode(
-                        pubKeyX: wallet.pubKeyX,
-                        pubKeyY: wallet.pubKeyY,
+                        pubKeyX: x,
+                        pubKeyY: y,
                         salt: UInt64(wallet.index)
                     )
                 }

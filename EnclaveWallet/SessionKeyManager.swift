@@ -167,9 +167,9 @@ enum SessionKeySigner {
 
         let code = try await RPCClient.shared.getCode(address: wallet.address)
         let deployed = code != "0x" && code != "0x0" && code.count > 4
-        if !deployed {
+        if !deployed, let x = wallet.pubKeyX, let y = wallet.pubKeyY {
             op.initCode = UserOperation.buildInitCode(
-                pubKeyX: wallet.pubKeyX, pubKeyY: wallet.pubKeyY,
+                pubKeyX: x, pubKeyY: y,
                 salt: UInt64(wallet.index)
             )
         }

@@ -187,12 +187,12 @@ struct WalledGardenWebView: NSViewRepresentable {
                 return NSNull()
 
             case "enclave_listSessionKeys":
-                let keys = SessionKeyManager.shared.allKeys()
+                let keys = SessionKeyManager.shared.allKeys(walletAddress: wallet.address)
                 return keys.map { ["appId": $0.appId, "address": $0.address] }
 
             case "enclave_revokeSessionKey":
                 guard let appId = params.first as? String else { throw BridgeError.invalidParams }
-                SessionKeyManager.shared.remove(appId: appId)
+                SessionKeyManager.shared.remove(walletAddress: wallet.address, appId: appId)
                 return NSNull()
 
             default:

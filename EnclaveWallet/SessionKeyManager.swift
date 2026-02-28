@@ -8,6 +8,7 @@ private let keychainService = "com.plether.EnclaveWallet.sessionKeys"
 private let appIdsKey = "sessionKeyAppIds"
 
 struct SessionKey: Sendable {
+    let walletAddress: String
     let appId: String
     let address: String
 }
@@ -17,21 +18,27 @@ class SessionKeyManager {
 
     private init() {}
 
-    func getOrCreate(appId: String) throws -> SessionKey {
-        if let existing = loadKey(appId: appId) {
+    private func scopedId(_ walletAddress: String, _ appId: String) -> String {
+        "\(walletAddress.lowercased()):\(appId)"
+    }
+
+    func getOrCreate(walletAddress: String, appId: String) throws -> SessionKey {
+        let key = scopedId(walletAddress, appId)
+        if let existing = loadKey(account: key) {
             let address = try deriveAddress(from: existing)
-            return SessionKey(appId: appId, address: address)
+            return SessionKey(walletAddress: walletAddress, appId: appId, address: address)
         }
 
         let privateKey = try P256K.Signing.PrivateKey()
-        saveKey(Data(privateKey.dataRepresentation), appId: appId)
+        saveKey(Data(privateKey.dataRepresentation), account: key)
         let address = try deriveAddress(from: Data(privateKey.dataRepresentation))
-        log.notice("Created session key for \(appId, privacy: .public): \(address, privacy: .public)")
-        return SessionKey(appId: appId, address: address)
+        log.notice("Created session key for \(appId, privacy: .public) on \(walletAddress.prefix(10), privacy: .public)")
+        return SessionKey(walletAddress: walletAddress, appId: appId, address: address)
     }
 
-    func sign(appId: String, hash: Data) throws -> Data {
-        guard let keyData = loadKey(appId: appId) else {
+    func sign(walletAddress: String, appId: String, hash: Data) throws -> Data {
+        let key = scopedId(walletAddress, appId)
+        guard let keyData = loadKey(account: key) else {
             throw SessionKeyError.keyNotFound(appId)
         }
 
@@ -47,42 +54,38 @@ class SessionKeyManager {
         return result
     }
 
-    func address(appId: String) throws -> String {
-        guard let keyData = loadKey(appId: appId) else {
-            throw SessionKeyError.keyNotFound(appId)
-        }
-        return try deriveAddress(from: keyData)
-    }
-
-    func remove(appId: String) {
+    func remove(walletAddress: String, appId: String) {
+        let key = scopedId(walletAddress, appId)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: appId,
+            kSecAttrAccount as String: key,
         ]
         SecItemDelete(query as CFDictionary)
 
-        var ids = storedAppIds()
-        ids.removeAll { $0 == appId }
+        var ids = storedIds()
+        ids.removeAll { $0 == key }
         UserDefaults.standard.set(ids, forKey: appIdsKey)
-        log.notice("Removed session key for \(appId, privacy: .public)")
+        log.notice("Removed session key for \(appId, privacy: .public) on \(walletAddress.prefix(10), privacy: .public)")
     }
 
-    func allKeys() -> [SessionKey] {
-        storedAppIds().compactMap { appId in
-            guard let keyData = loadKey(appId: appId),
+    func allKeys(walletAddress: String) -> [SessionKey] {
+        let prefix = walletAddress.lowercased() + ":"
+        return storedIds().filter { $0.hasPrefix(prefix) }.compactMap { key in
+            guard let keyData = loadKey(account: key),
                   let address = try? deriveAddress(from: keyData) else { return nil }
-            return SessionKey(appId: appId, address: address)
+            let appId = String(key.dropFirst(prefix.count))
+            return SessionKey(walletAddress: walletAddress, appId: appId, address: address)
         }
     }
 
     // MARK: - Keychain
 
-    private func loadKey(appId: String) -> Data? {
+    private func loadKey(account: String) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: appId,
+            kSecAttrAccount as String: account,
             kSecReturnData as String: true,
         ]
 
@@ -92,11 +95,11 @@ class SessionKeyManager {
         return data
     }
 
-    private func saveKey(_ data: Data, appId: String) {
+    private func saveKey(_ data: Data, account: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: appId,
+            kSecAttrAccount as String: account,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
@@ -107,14 +110,14 @@ class SessionKeyManager {
             SecItemUpdate(query as CFDictionary, update as CFDictionary)
         }
 
-        var ids = storedAppIds()
-        if !ids.contains(appId) {
-            ids.append(appId)
+        var ids = storedIds()
+        if !ids.contains(account) {
+            ids.append(account)
             UserDefaults.standard.set(ids, forKey: appIdsKey)
         }
     }
 
-    private func storedAppIds() -> [String] {
+    private func storedIds() -> [String] {
         UserDefaults.standard.stringArray(forKey: appIdsKey) ?? []
     }
 
@@ -134,7 +137,7 @@ enum SessionKeySigner {
 
     static func signHash(_ hash: Data, appId: String, wallet: Wallet) async throws -> String {
         let mgr = SessionKeyManager.shared
-        let sessionKey = try mgr.getOrCreate(appId: appId)
+        let sessionKey = try mgr.getOrCreate(walletAddress: wallet.address, appId: appId)
 
         let registered = try await isSessionKeyRegistered(
             walletAddress: wallet.address, sessionKeyAddress: sessionKey.address
@@ -143,7 +146,7 @@ enum SessionKeySigner {
             try await registerSessionKey(wallet: wallet, sessionKeyAddress: sessionKey.address)
         }
 
-        let sig = try mgr.sign(appId: appId, hash: hash)
+        let sig = try mgr.sign(walletAddress: wallet.address, appId: appId, hash: hash)
         return "0x" + sig.map { String(format: "%02x", $0) }.joined()
     }
 

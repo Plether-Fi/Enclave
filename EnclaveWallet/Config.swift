@@ -66,6 +66,17 @@ nonisolated enum Config {
 
     nonisolated(unsafe) static var activeNetwork: Network = .arbitrumSepolia
 
+    static var ipfsGateways: [String] {
+        if let custom = UserDefaults.standard.string(forKey: "ipfsNodeURL"), !custom.isEmpty {
+            return [custom]
+        }
+        return [
+            "https://ipfs.io/ipfs/",
+            "https://cloudflare-ipfs.com/ipfs/",
+            "https://dweb.link/ipfs/",
+        ]
+    }
+
     // EnclaveWallet creation bytecode (from `forge inspect EnclaveWallet bytecode`)
     // Used for offline CREATE2 address computation
     // swiftlint:disable:next line_length

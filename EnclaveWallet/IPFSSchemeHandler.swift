@@ -4,11 +4,7 @@ import UniformTypeIdentifiers
 
 private let log = Logger(subsystem: "com.plether.EnclaveWallet", category: "IPFS")
 
-private let gateways = [
-    "https://ipfs.io/ipfs/",
-    "https://cloudflare-ipfs.com/ipfs/",
-    "https://dweb.link/ipfs/",
-]
+import Foundation
 
 class IPFSSchemeHandler: NSObject, WKURLSchemeHandler {
     private var activeTasks: Set<ObjectIdentifier> = []
@@ -67,7 +63,7 @@ class IPFSSchemeHandler: NSObject, WKURLSchemeHandler {
     private func fetchFromGateways(path: String, taskID: ObjectIdentifier) async throws -> (Data, String?) {
         var lastError: Error = IPFSError.allGatewaysFailed
 
-        for gateway in gateways {
+        for gateway in Config.ipfsGateways {
             guard isActive(taskID) else { throw CancellationError() }
             guard let url = URL(string: gateway + path) else { continue }
 
